@@ -1337,7 +1337,9 @@
   "21886": {
     "Category": "Access control",
     "ImplementationCost": "Medium",
+    "Pillar": "Identity",
     "RiskLevel": "Medium",
+    "SfiPillar": "Protect engineering systems",
     "TenantType": [
       "Workforce",
       "External"
@@ -1882,7 +1884,7 @@
   },
   "24554": {
     "Category": "Device management",
-    "ImplementationCost": "Low",
+    "ImplementationCost": "High",
     "Pillar": "Devices",
     "RiskLevel": "High",
     "SfiPillar": "Protect engineering systems",
@@ -1890,10 +1892,10 @@
       "Workforce"
     ],
     "TestId": "24554",
-    "Title": "An iOS update policy is created and assigned",
+    "Title": "iOS - Update policy is configured and assigned",
     "UserImpact": "Low"
   },
-  "40000": {
+  "24690": {
     "Category": "Device management",
     "ImplementationCost": "High",
     "Pillar": "Devices",
@@ -1902,8 +1904,8 @@
     "TenantType": [
       "Workforce"
     ],
-    "TestId": "40000",
-    "Title": "Windows automatic enrollment is enabled",
+    "TestId": "24690",
+    "Title": "macOS - Update policy is configured and assigned",
     "UserImpact": "Low"
   }
 }
