@@ -54,7 +54,7 @@ A hashtable where each key is a setting definition ID and the value is a configu
 
 .OUTPUTS
 System.Array
-Returns an array of policy objects that contain at least one of the required settings with matching values.
+Returns an array of policy objects that contain all of the required settings with matching values.
 
 .EXAMPLE
 $requiredSettings = @{
@@ -89,12 +89,12 @@ $multipleSettings = @{
 
 $filteredPolicies = Get-FilteredPoliciesBySetting -Policies $policies -RequiredSettings $multipleSettings
 
-Filters policies that contain either of two different settings, each located in different JSON paths.
+Filters policies that contain both required settings, each located in different JSON paths.
 
 .NOTES
 - The function uses a nested helper function Get-NestedProperty to safely navigate object properties
 - If any path evaluation fails, the function logs a verbose message and continues with the next setting
-- The function returns policies that match ANY of the required settings (OR logic)
+- The function returns policies that match ALL of the required settings (AND logic)
 - Empty or null policy arrays are handled gracefully by returning an empty array
     #>
     function Get-FilteredPoliciesBySetting {
@@ -142,7 +142,7 @@ Filters policies that contain either of two different settings, each located in 
         $filteredPolicies = @()
 
         foreach ($policy in $Policies) {
-            $hasValidConfiguration = $false
+            $matchedSettingsCount = 0
 
             # Check each required setting configuration
             foreach ($settingId in $RequiredSettings.Keys) {
@@ -151,6 +151,8 @@ Filters policies that contain either of two different settings, each located in 
                 $containerPath = $settingConfig.ContainerPath
                 $settingIdPath = $settingConfig.SettingIdPath
                 $valuePath = $settingConfig.ValuePath
+
+                $settingMatched = $false
 
                 try {
                     # Get the settings container using the configured path
@@ -169,7 +171,7 @@ Filters policies that contain either of two different settings, each located in 
                             # Check if any actual value matches any expected value
                             foreach ($actualValue in $actualValues) {
                                 if ($expectedValues -contains $actualValue) {
-                                    $hasValidConfiguration = $true
+                                    $settingMatched = $true
                                     break
                                 }
                             }
@@ -181,12 +183,13 @@ Filters policies that contain either of two different settings, each located in 
                     continue
                 }
 
-                if ($hasValidConfiguration) {
-                    break
+                if ($settingMatched) {
+                    $matchedSettingsCount++
                 }
             }
 
-            if ($hasValidConfiguration) {
+            # Policy must match ALL required settings (AND logic)
+            if ($matchedSettingsCount -eq $RequiredSettings.Keys.Count) {
                 $filteredPolicies += $policy
             }
         }
