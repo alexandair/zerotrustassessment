@@ -61,9 +61,25 @@
 		$testsToRun = $testsToRun | Where-Object { $_.Pillar -in $stablePillars }
 	}
 
+    # Split tests into Parallel (Graph-safe) and Synchronous (Compliance/PSSession-bound)
+    # Tests using Get-Label, Get-LabelPolicy, etc. must run in the main session where the PSSession exists.
+    $syncTestIds = @('35003', '35004', '35010')
+    $syncTests = $testsToRun | Where-Object { $_.TestId -in $syncTestIds }
+    $parallelTests = $testsToRun | Where-Object { $_.TestId -notin $syncTestIds }
+
 	try {
-		$workflow = Start-ZtTestExecution -Tests $testsToRun -DbPath $Database.Database -ThrottleLimit $ThrottleLimit
-		Wait-ZtTest -Workflow $workflow
+        $workflow = $null
+        if ($parallelTests) {
+		    $workflow = Start-ZtTestExecution -Tests $parallelTests -DbPath $Database.Database -ThrottleLimit $ThrottleLimit
+		    Wait-ZtTest -Workflow $workflow
+        }
+
+        if ($syncTests) {
+            Write-PSFMessage "Running $($syncTests.Count) compliance tests synchronously..." -Level Host
+            foreach ($test in $syncTests) {
+                Invoke-ZtTest -Test $test -Database $Database
+            }
+        }
 	}
 	finally {
 		if ($workflow) {

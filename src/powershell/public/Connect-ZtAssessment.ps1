@@ -37,6 +37,9 @@
 	.PARAMETER SkipAzureConnection
 		If specified, skips connecting to Azure and only connects to Microsoft Graph.
 
+	.PARAMETER SkipSecurityComplianceConnection
+		If specified, skips connecting to Security & Compliance Center.
+
 	.EXAMPLE
 		PS C:\> Connect-ZtAssessment
 
@@ -80,8 +83,52 @@
 		$Certificate,
 
 		[switch]
-		$SkipAzureConnection
+		$SkipAzureConnection,
+
+		[switch]
+		$SkipSecurityComplianceConnection
 	)
+
+	if (-not $SkipSecurityComplianceConnection) {
+		Write-Host "`nConnecting to Security & Compliance Center" -ForegroundColor Yellow
+		Write-PSFMessage 'Connecting to Security & Compliance Center'
+
+		try {
+			# Capture existing modules to identify the new dynamic module created by Connect-IPPSSession
+			$existingModules = Get-Module
+
+			if ($ClientId -and $Certificate) {
+				# App-only authentication
+				Connect-IPPSSession -AppId $ClientId -Certificate $Certificate -Organization $TenantId -ErrorAction Stop
+			}
+			else {
+				# Delegated authentication
+				$ippParams = @{}
+				if ($UseDeviceCode) {
+					$ippParams.Device = $true
+				}
+
+				Connect-IPPSSession @ippParams -ErrorAction Stop
+			}
+
+			# Fix for Scope Issue:
+			# Connect-IPPSSession inside a module imports commands into the module scope.
+			# We need to ensure they are available globally so tests running outside the module can see them.
+
+			$labelCmd = Get-Command Get-Label -ErrorAction SilentlyContinue
+			if ($labelCmd -and $labelCmd.ModuleName) {
+				Write-Verbose "Get-Label found in module '$($labelCmd.ModuleName)'. Importing to Global scope..."
+				Import-Module $labelCmd.ModuleName -Global -Force -ErrorAction SilentlyContinue
+			} elseif ($labelCmd) {
+				Write-Verbose "Get-Label found but is not associated with a module."
+			} else {
+				Write-Warning "Get-Label is NOT available in the current scope. Compliance commands may be missing."
+			}
+		}
+		catch {
+			Stop-PSFFunction -Message "Failed to authenticate to Security & Compliance Center: $_" -ErrorRecord $_ -EnableException $true -Cmdlet $PSCmdlet
+		}
+	}
 
 	Write-Host "`nConnecting to Microsoft Graph" -ForegroundColor Yellow
 	Write-PSFMessage 'Connecting to Microsoft Graph'
@@ -114,35 +161,33 @@
 		Stop-PSFFunction -Message "Authenticated to Graph, but the requirements for the ZeroTrustAssessment are not met by the established session:`n$_" -ErrorRecord $_ -EnableException $true -Cmdlet $PSCmdlet
 	}
 
-	if ($SkipAzureConnection) {
-		return
-	}
+	if (-not $SkipAzureConnection) {
+		Write-Host "`nConnecting to Azure" -ForegroundColor Yellow
+		Write-PSFMessage 'Connecting to Azure'
 
-	Write-Host "`nConnecting to Azure" -ForegroundColor Yellow
-	Write-PSFMessage 'Connecting to Azure'
+		$azEnvironment = 'AzureCloud'
+		if ($Environment -eq 'China') {
+			$azEnvironment = Get-AzEnvironment -Name AzureChinaCloud
+		}
+		elseif ($Environment -in 'USGov', 'USGovDoD') {
+			$azEnvironment = 'AzureUSGovernment'
+		}
 
-	$azEnvironment = 'AzureCloud'
-	if ($Environment -eq 'China') {
-		$azEnvironment = Get-AzEnvironment -Name AzureChinaCloud
-	}
-	elseif ($Environment -in 'USGov', 'USGovDoD') {
-		$azEnvironment = 'AzureUSGovernment'
-	}
+		$azParams = @{
+			UseDeviceAuthentication = $UseDeviceCode
+			Environment             = $azEnvironment
+			Tenant                  = $TenantId ? $TenantId : $contextTenantId
+		}
+		if ($ClientId -and $Certificate) {
+			$azParams.ApplicationId = $ClientId
+			$azParams.CertificateThumbprint = $Certificate.Certificate.Thumbprint
+		}
 
-	$azParams = @{
-		UseDeviceAuthentication = $UseDeviceCode
-		Environment             = $azEnvironment
-		Tenant                  = $TenantId ? $TenantId : $contextTenantId
-	}
-	if ($ClientId -and $Certificate) {
-		$azParams.ApplicationId = $ClientId
-		$azParams.CertificateThumbprint = $Certificate.Certificate.Thumbprint
-	}
-
-	try {
-		Connect-AzAccount @azParams -ErrorAction Stop
-	}
-	catch {
-		Stop-PSFFunction -Message "Failed to authenticate to Azure: $_" -ErrorRecord $_ -EnableException $true -Cmdlet $PSCmdlet
+		try {
+			Connect-AzAccount @azParams -ErrorAction Stop
+		}
+		catch {
+			Stop-PSFFunction -Message "Failed to authenticate to Azure: $_" -ErrorRecord $_ -EnableException $true -Cmdlet $PSCmdlet
+		}
 	}
 }
