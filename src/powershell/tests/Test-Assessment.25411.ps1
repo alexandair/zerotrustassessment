@@ -44,28 +44,6 @@ function Test-Assessment-25411 {
     Write-ZtProgress -Activity $activity -Status 'Querying Conditional Access policies'
     $allCAPolicies = Get-ZtConditionalAccessPolicy
 
-    # Build CA profile lookup for O(1) access instead of O(N) search per profile
-    Write-ZtProgress -Activity $activity -Status 'Building Conditional Access policy lookup'
-    $caProfileLookup = @{}
-    foreach ($cap in $allCAPolicies) {
-        $session = $cap.sessionControls
-        if ($null -ne $session -and $null -ne $session.globalSecureAccessFilteringProfile) {
-            $sessionProfileId = $session.globalSecureAccessFilteringProfile.profileId
-            $sessionEnabled = $session.globalSecureAccessFilteringProfile.isEnabled
-
-            if ($sessionEnabled -eq $true -and $cap.state -eq 'enabled') {
-                if (-not $caProfileLookup.ContainsKey($sessionProfileId)) {
-                    $caProfileLookup[$sessionProfileId] = @()
-                }
-                $caProfileLookup[$sessionProfileId] += [PSCustomObject]@{
-                    Id          = $cap.id
-                    DisplayName = $cap.displayName
-                    State       = $cap.state
-                }
-            }
-        }
-    }
-
     #endregion Data Collection
 
     #region Data Processing
@@ -73,92 +51,61 @@ function Test-Assessment-25411 {
     $enabledSecurityProfiles = @()
     $enabledBaseLineProfiles = @()
 
-    # Iterate each TLS inspection policy and find linked profiles
+    # Iterate each TLS inspection policy and find linked profiles using shared helper
     foreach ($tlsPolicy in $tlsInspectionPolicies) {
         $tlsId = $tlsPolicy.id
-        $baseLineProfileFound = $false
-        foreach ($profileItem in $filteringProfiles) {
-            $profilePolicies = @()
-            if ($null -ne $profileItem.policies) {
-                $profilePolicies = $profileItem.policies
-            }
 
-            foreach ($plink in $profilePolicies) {
-                $plinkType = $plink.'@odata.type'
-                $linkedPolicyId = $null
-                # Only process tlsInspectionPolicyLink entries
-                if ($plinkType -eq '#microsoft.graph.networkaccess.tlsInspectionPolicyLink' -and $null -ne $plink.policy) {
-                    $linkedPolicyId = $plink.policy.id
-                }
+        # Use shared helper function to find profiles linked to this policy
+        $findParams = @{
+            PolicyId          = $tlsId
+            FilteringProfiles = $filteringProfiles
+            CAPolicies        = $allCAPolicies
+            BaselinePriority  = $BASELINE_PROFILE_PRIORITY
+            PolicyLinkType    = 'tlsInspectionPolicyLink'
+            PolicyRules       = @()
+        }
+        $linkedProfiles = Find-ZtProfilesLinkedToPolicy @findParams
 
-                if ($null -ne $linkedPolicyId -and $linkedPolicyId -eq $tlsId) {
-                    $linkState = if ($null -ne $plink.state) {
-                        $plink.state
-                    }
-                    else {
-                        'unknown'
-                    }
-                    $profileState = if ($null -ne $profileItem.state) {
-                        $profileItem.state
-                    }
-                    else {
-                        'unknown'
-                    }
-                    $priority = if ($null -ne $profileItem.priority) {
-                        [int]$profileItem.priority
-                    }
-                    else {
-                        $null
-                    }
+        # Process the results and format for existing report generation logic
+        foreach ($profileInfo in $linkedProfiles) {
+            $linkState = $profileInfo.PolicyLinkState
+            $profileState = $profileInfo.ProfileState
 
-                    if ($priority -eq $BASELINE_PROFILE_PRIORITY) {
-                        # Baseline Profile: apply without CA
-
-                        if ($linkState -eq 'enabled' -and $profileState -eq 'enabled') {
-                            $baseLineProfileFound = $true
-                            $enabledBaseLineProfiles += [PSCustomObject]@{
-                                ProfileId          = $profileItem.id
-                                ProfileName        = $profileItem.name
-                                ProfileState       = $profileState
-                                ProfilePriority    = $priority
-                                TLSPolicyId        = $tlsId
-                                TLSPolicyName      = $plink.policy.name
-                                TLSPolicyLinkState = $linkState
-                            }
-                            break
-                        }
-                    } elseif ($null -ne $priority -and $priority -lt $BASELINE_PROFILE_PRIORITY) {
-                        # Security Profile: must be applied via Conditional Access
-                        # Validate CA policies reference this profile via sessionControls
-                        $matchedCAPolicies = @()
-                        if ($caProfileLookup.ContainsKey($profileItem.id)) {
-                            $matchedCAPolicies = $caProfileLookup[$profileItem.id]
-                        }
-
-                        if ($matchedCAPolicies.Count -gt 0 -and $profileState -eq 'enabled' -and $linkState -eq 'enabled') {
-                            $enabledSecurityProfiles += [PSCustomObject]@{
-                                ProfileId          = $profileItem.id
-                                ProfileName        = $profileItem.name
-                                ProfileState       = $profileState
-                                ProfilePriority    = $priority
-                                TLSPolicyId        = $tlsId
-                                TLSPolicyName      = $plink.policy.name
-                                TLSPolicyLinkState = $linkState
-                                MatchedCAPolicies  = $matchedCAPolicies
-                                CAPolicyCount      = $matchedCAPolicies.Count
-                                DefaultAction      = if ($null -ne $tlsPolicy.settings) {
-                                    $tlsPolicy.settings.defaultAction
-                                }
-                                else {
-                                    'unknown'
-                                }
-                            }
-                        }
+            if ($profileInfo.ProfileType -eq 'Baseline Profile') {
+                # Baseline Profile: only add if both link and profile are enabled
+                if ($linkState -eq 'enabled' -and $profileState -eq 'enabled') {
+                    $enabledBaseLineProfiles += [PSCustomObject]@{
+                        ProfileId          = $profileInfo.ProfileId
+                        ProfileName        = $profileInfo.ProfileName
+                        ProfileState       = $profileState
+                        ProfilePriority    = $profileInfo.ProfilePriority
+                        TLSPolicyId        = $tlsId
+                        TLSPolicyName      = $tlsPolicy.name
+                        TLSPolicyLinkState = $linkState
                     }
                 }
             }
-            if ($baseLineProfileFound) {
-                break
+            elseif ($profileInfo.ProfileType -eq 'Security Profile' -and $profileInfo.PassesCriteria) {
+                # Security Profile: only add if passes criteria and both states are enabled
+                if ($linkState -eq 'enabled' -and $profileState -eq 'enabled') {
+                    $enabledSecurityProfiles += [PSCustomObject]@{
+                        ProfileId          = $profileInfo.ProfileId
+                        ProfileName        = $profileInfo.ProfileName
+                        ProfileState       = $profileState
+                        ProfilePriority    = $profileInfo.ProfilePriority
+                        TLSPolicyId        = $tlsId
+                        TLSPolicyName      = $tlsPolicy.name
+                        TLSPolicyLinkState = $linkState
+                        MatchedCAPolicies  = $profileInfo.CAPolicy
+                        CAPolicyCount      = if ($profileInfo.CAPolicy) { $profileInfo.CAPolicy.Count } else { 0 }
+                        DefaultAction      = if ($null -ne $tlsPolicy.settings) {
+                            $tlsPolicy.settings.defaultAction
+                        }
+                        else {
+                            'unknown'
+                        }
+                    }
+                }
             }
         }
     }
