@@ -28,11 +28,9 @@ function Test-Assessment-25535 {
         param([string]$SubscriptionId)
 
         $firewalls = @()
-        $fwListUri = "/subscriptions/$SubscriptionId/providers/Microsoft.Network/azureFirewalls?api-version=2025-03-01"
 
         try {
-            $fwResp = Invoke-AzRestMethod -Path $fwListUri -Method GET
-            $fwItems = ($fwResp.Content | ConvertFrom-Json).value
+            $fwItems = Invoke-ZtRestMethod -Path "/subscriptions/$SubscriptionId/providers/Microsoft.Network/azureFirewalls" -ApiVersion '2025-03-01'
         }
         catch {
             Write-PSFMessage "Unable to list Azure Firewalls in subscription $SubscriptionId." -Tag Test -Level Warning
@@ -41,8 +39,7 @@ function Test-Assessment-25535 {
 
         foreach ($fw in $fwItems) {
             try {
-                $fwDetailResp = Invoke-AzRestMethod -Path "$($fw.id)?api-version=2025-03-01" -Method GET
-                $fwDetail = $fwDetailResp.Content | ConvertFrom-Json
+                $fwDetail = Invoke-ZtRestMethod -Path $fw.id -ApiVersion '2025-03-01'
 
                 foreach ($ipconfig in $fwDetail.properties.ipConfigurations) {
                     if ($ipconfig.properties.privateIPAddress) {
@@ -70,28 +67,11 @@ function Test-Assessment-25535 {
         )
 
         $asyncOperations = @()
-        $nicListUri = "/subscriptions/$SubscriptionId/providers/Microsoft.Network/networkInterfaces?api-version=2025-03-01"
 
         try {
-            # Azure REST list APIs are paginated.
-            # Handling nextLink is required to avoid missing NICs in large subscriptions.
-            $nics = @()
-            $nicResp = Invoke-AzRestMethod -Path $nicListUri -Method GET
-            $nicPage = $nicResp.Content | ConvertFrom-Json
-
-            if ($nicPage.value) {
-                $nics += $nicPage.value
-            }
-
-            $nextLink = $nicPage.nextLink
-            while ($nextLink) {
-                $nicResp = Invoke-AzRestMethod -Uri $nextLink -Method GET
-                $nicPage = $nicResp.Content | ConvertFrom-Json
-                if ($nicPage.value) {
-                    $nics += $nicPage.value
-                }
-                $nextLink = $nicPage.nextLink
-            }
+            # Invoke-ZtRestMethod handles pagination automatically via -Paginate
+            $nics = Invoke-ZtRestMethod -Path "/subscriptions/$SubscriptionId/providers/Microsoft.Network/networkInterfaces" -ApiVersion '2025-03-01'
+            if (-not $nics) { $nics = @() }
         }
         catch {
             Write-PSFMessage "Unable to list network interfaces in subscription $($Subscription.Name)." -Tag Test -Level Warning

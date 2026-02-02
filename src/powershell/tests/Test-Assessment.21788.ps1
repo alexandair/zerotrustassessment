@@ -41,24 +41,19 @@ function Test-Assessment-21788 {
     else {
         Write-ZtProgress -Activity $activity -Status "Getting role assignments"
 
-        $resourceManagementUrl = (Get-AzContext).Environment.ResourceManagerUrl
-        $azRoleAssignmentUri = $resourceManagementUrl + 'providers/Microsoft.Authorization/roleAssignments?$filter=atScope()&api-version=2022-04-01'
+        $roleAssignmentsResponse = Invoke-ZtRestMethod -Path '/providers/Microsoft.Authorization/roleAssignments' -ApiVersion '2022-04-01' -Filter 'atScope()' -FullResponse
 
-        try {
-            $roleAssignments = Invoke-AzRestMethod -Method GET -Uri $azRoleAssignmentUri -ErrorAction Stop
-        }
-        catch {
-            if ($_.Exception.Response.StatusCode -eq 403 -or $_.Exception.Message -like "*403*" -or $_.Exception.Message -like "*Forbidden*") {
-                Write-PSFMessage "The signed in user does not have required access to the Azure subscription." -Level Verbose
-                Add-ZtTestResultDetail -SkippedBecause NoAzureAccess
-                return
-            }
-            else {
-                throw
-            }
+        if ($roleAssignmentsResponse.StatusCode -eq 403) {
+            Write-PSFMessage "The signed in user does not have required access to the Azure subscription." -Level Verbose
+            Add-ZtTestResultDetail -SkippedBecause NoAzureAccess
+            return
         }
 
-        $results = ($roleAssignments.Content | ConvertFrom-Json).value.properties | Where-Object {
+        if ($roleAssignmentsResponse.StatusCode -lt 200 -or $roleAssignmentsResponse.StatusCode -ge 300) {
+            throw "Azure REST request failed with status $($roleAssignmentsResponse.StatusCode)"
+        }
+
+        $results = ($roleAssignmentsResponse.Content | ConvertFrom-Json).value.properties | Where-Object {
             $_.roleDefinitionId -eq '/providers/Microsoft.Authorization/roleDefinitions/18d7d88d-d35e-4fb5-a5c3-7773c20a72d9'
         }
 
