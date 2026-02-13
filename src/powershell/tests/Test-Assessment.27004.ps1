@@ -103,15 +103,15 @@ function Test-Assessment-27004 {
     #region Assessment Logic
     $testResultMarkdown = ''
     $passed = $false
-    $skippedBecause = $null
 
     if ($null -eq $tlsPolicies -or $tlsPolicies.Count -eq 0) {
         # No TLS inspection policies configured - prerequisite not met
-        $testResultMarkdown = "⚠️ TLS inspection is not configured in this tenant. This check is not applicable until a TLS inspection policy is created.`n`n%TestResult%"
-        $skippedBecause = 'NotApplicable'
+        Write-PSFMessage 'TLS inspection is not configured in this tenant.' -Tag Test -Level Verbose
+        Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'TLS inspection is not configured in this tenant. This check is not applicable until a TLS inspection policy is created.'
+        return
     }
-    else {
-        Write-ZtProgress -Activity $activity -Status 'Analyzing bypass rules for redundancies'
+
+    Write-ZtProgress -Activity $activity -Status 'Analyzing bypass rules for redundancies'
 
         $allBypassRules = [System.Collections.Generic.List[object]]::new()
         $redundantRules = [System.Collections.Generic.List[object]]::new()
@@ -210,7 +210,6 @@ function Test-Assessment-27004 {
             $passed = $false
             $testResultMarkdown = "❌ Found custom bypass rules that duplicate system bypass destinations; these rules are redundant and can be removed to simplify policy management.`n`n%TestResult%"
         }
-    }
     #endregion Assessment Logic
 
     #region Report Generation
@@ -282,9 +281,6 @@ function Test-Assessment-27004 {
         Title  = 'TLS inspection custom bypass rules do not duplicate system bypass destinations'
         Status = $passed
         Result = $testResultMarkdown
-    }
-    if ($skippedBecause) {
-        $params.SkippedBecause = $skippedBecause
     }
     Add-ZtTestResultDetail @params
 }
