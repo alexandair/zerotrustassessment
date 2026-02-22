@@ -27,7 +27,7 @@ function Test-Assessment-35028 {
         SfiPillar = 'Protect tenants and production systems',
         TenantType = ('Workforce', 'External'),
         TestId = 35028,
-        Title = 'Email retention policies configured',
+        Title = 'Email retention policies are configured',
         UserImpact = 'Medium'
     )]
     [CmdletBinding()]
@@ -124,7 +124,8 @@ function Test-Assessment-35028 {
                 $retentionAction = if ($rule.RetentionComplianceAction) { Get-SafeMarkdown -Text "$($rule.RetentionComplianceAction)" } else { 'N/A' }
                 $retentionDuration = if ($rule.RetentionDuration) { "$($rule.RetentionDuration)" } else { 'Indefinite' }
                 if ($rule.RetentionDurationDisplayHint) {
-                    $retentionDuration += " ($($rule.RetentionDurationDisplayHint))"
+                    $safeRetentionDurationDisplayHint = Get-SafeMarkdown -Text "$($rule.RetentionDurationDisplayHint)"
+                    $retentionDuration += " ($safeRetentionDurationDisplayHint)"
                 }
                 $ruleRows += "| $ruleName | $parentPolicy | $ruleEnabled | $retentionAction | $retentionDuration |`n"
             }
@@ -169,7 +170,7 @@ function Test-Assessment-35028 {
 
     $params = @{
         TestId = '35028'
-        Title  = 'Email retention policies configured'
+        Title  = 'Email retention policies are configured'
         Status = $passed
         Result = $testResultMarkdown
     }
