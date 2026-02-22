@@ -63,11 +63,11 @@ function Test-Assessment-35023 {
     if ($ocrConfig) {
         $blockReason = $ocrConfig.OcrUsageBlockageReason
         $enabled   = $ocrConfig.Enabled
-        $exchange   = [bool]$ocrConfig.ExchangeLocation
-        $sharePoint = [bool]$ocrConfig.SharePointLocation
-        $oneDrive   = [bool]$ocrConfig.OneDriveLocation
-        $teams      = [bool]$ocrConfig.TeamsLocation
-        $endpoint   = [bool]$ocrConfig.EndpointDlpLocation
+        $exchange   = $ocrConfig.ExchangeLocation.Count -gt 0
+        $sharePoint = $ocrConfig.SharePointLocation.Count -gt 0
+        $oneDrive   = $ocrConfig.OneDriveLocation.Count -gt 0
+        $teams      = $ocrConfig.TeamsLocation.Count -gt 0
+        $endpoint   = $ocrConfig.EndpointDlpLocation.Count -gt 0
         $isBlocked  = $ocrConfig.IsOcrUsageBlocked
 
         if ($exchange)   { $enabledLocationsCount++ }
@@ -128,11 +128,11 @@ function Test-Assessment-35023 {
 
         $tableRows = "| Configuration object exists | $configurationObjectStatus |`n"
         $tableRows += "| OCR enabled (Tenant-level) | $enabled |`n"
-        $tableRows += "| Exchange location enabled | $($exchange.ToString()) |`n"
-        $tableRows += "| SharePoint location enabled | $($sharePoint.ToString()) |`n"
-        $tableRows += "| OneDrive location enabled | $($oneDrive.ToString()) |`n"
-        $tableRows += "| Teams location enabled | $($teams.ToString()) |`n"
-        $tableRows += "| Endpoint location enabled | $($endpoint.ToString()) |`n"
+        $tableRows += "| Exchange location enabled | $exchange |`n"
+        $tableRows += "| SharePoint location enabled | $sharePoint |`n"
+        $tableRows += "| OneDrive location enabled | $oneDrive |`n"
+        $tableRows += "| Teams location enabled | $teams |`n"
+        $tableRows += "| Endpoint location enabled | $endpoint |`n"
         $tableRows += "| OCR usage blocked | $(if ($null -eq $isBlocked) { 'N/A' } else { $isBlocked }) |`n"
         $tableRows += "| Blockage reason | $(if ($blockReason) { $blockReason } else { 'None' }) |`n"
         $tableRows += "| Azure billing status | $(if ($billingStatus) { $billingStatus } else { 'N/A' }) |`n"
