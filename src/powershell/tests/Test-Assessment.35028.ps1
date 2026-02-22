@@ -48,7 +48,8 @@ function Test-Assessment-35028 {
         Write-PSFMessage "Querying retention compliance policies" -Level Verbose
         # These cmdlets are available only in Security & Compliance PowerShell
         # Reference: https://learn.microsoft.com/en-us/powershell/module/exchangepowershell/get-retentioncompliancepolicy?view=exchange-ps
-        $retentionPolicies = Get-RetentionCompliancePolicy -ErrorAction Stop
+        # Note: -DistributionDetail is required for accurate ExchangeLocation values
+        $retentionPolicies = Get-RetentionCompliancePolicy -DistributionDetail -ErrorAction Stop
 
         # Q2: Get retention rules associated with policies
 
@@ -73,7 +74,13 @@ function Test-Assessment-35028 {
     }
     else {
         # Filter for enabled retention policies with Exchange workload
-        $enabledExchangePolicies = @($retentionPolicies | Where-Object { $_.Enabled -eq $true -and $_.Workload -match 'Exchange' })
+        # Note: Workload property always shows all workloads regardless of actual scope.
+        # Use ExchangeLocation to determine actual Exchange scope.
+        $enabledExchangePolicies = @($retentionPolicies | Where-Object {
+            $_.Enabled -eq $true -and
+            $null -ne $_.ExchangeLocation -and
+            @($_.ExchangeLocation).Count -gt 0
+        })
 
         $passed = $enabledExchangePolicies.Count -gt 0
 
@@ -89,16 +96,19 @@ function Test-Assessment-35028 {
     #region Report Generation
     $mdInfo = ''
 
-    $exchangePolicies = @($retentionPolicies | Where-Object { $_.Workload -match 'Exchange' })
+    $exchangePolicies = @($retentionPolicies | Where-Object {
+        $null -ne $_.ExchangeLocation -and
+        @($_.ExchangeLocation).Count -gt 0
+    })
 
     if ($exchangePolicies.Count -gt 0) {
         $policyRows = ''
         foreach ($pol in $exchangePolicies | Sort-Object -Property Name) {
             $policyName = Get-SafeMarkdown -Text $pol.Name
             $enabledIcon = if ($pol.Enabled) { '✅ Yes' } else { '❌ No' }
-            $workload = Get-SafeMarkdown -Text "$($pol.Workload)"
+            $exchangeScope = Get-SafeMarkdown -Text (@($pol.ExchangeLocation) -join ', ')
             $mode = if ($pol.Mode) { Get-SafeMarkdown -Text "$($pol.Mode)" } else { 'N/A' }
-            $policyRows += "| $policyName | $enabledIcon | $workload | $mode |`n"
+            $policyRows += "| $policyName | $enabledIcon | $exchangeScope | $mode |`n"
         }
 
         $ruleRows = ''
@@ -138,7 +148,7 @@ function Test-Assessment-35028 {
 
 ### [Retention policies with Exchange scope](https://purview.microsoft.com/datalifecyclemanagement/retention)
 
-| Policy name | Enabled | Workload | Mode |
+| Policy name | Enabled | Exchange scope | Mode |
 | :--- | :--- | :--- | :--- |
 {0}
 {1}
