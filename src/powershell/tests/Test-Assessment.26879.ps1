@@ -76,7 +76,7 @@ resources
     }
     catch {
         Write-PSFMessage "Azure Resource Graph query failed: $($_.Exception.Message)" -Tag Test -Level Warning
-        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result 'No subscription found or the signed in user does not have access to the Azure subscription to perform this test.'
+        Add-ZtTestResultDetail -SkippedBecause NotSupported
         return
     }
     #endregion Data Collection
@@ -115,8 +115,8 @@ resources
         $policyMd = "[$(Get-SafeMarkdown $item.PolicyName)]($policyLink)"
         $subMd = "[$(Get-SafeMarkdown $item.SubscriptionName)]($subLink)"
 
-        # Extract Application Gateway names from the ARG make_list array
-        $appGwMd = @($item.ApplicationGateways) -join ', '
+        # Extract Application Gateway names from the ARG make_list array and sanitize for Markdown
+        $appGwMd = @($item.ApplicationGateways | ForEach-Object { Get-SafeMarkdown $_ }) -join ', '
 
         # Calculate status indicators
         $requestBodyCheckDisplay = if ($item.RequestBodyCheck -eq $true) { '✅ Enabled' } else { '❌ Disabled' }
