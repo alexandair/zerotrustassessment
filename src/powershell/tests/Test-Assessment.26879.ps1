@@ -5,7 +5,7 @@
 .DESCRIPTION
     This test validates that Azure Application Gateway Web Application Firewall policies
     have request body inspection enabled to analyze HTTP POST, PUT, and PATCH request bodies
-    for malicious patterns. Only evaluates WAF policies that are attached to Application Gateways.
+    for malicious patterns.
 
 .NOTES
     Test ID: 26879
@@ -47,13 +47,19 @@ function Test-Assessment-26879 {
 
     Write-ZtProgress -Activity $activity -Status 'Querying Azure Resource Graph'
 
-    # Query all Application Gateway WAF policies attached to at least one Application Gateway
     $argQuery = @"
+resources
+| where type =~ 'microsoft.network/ApplicationGatewayWebApplicationFirewallPolicies'
+| join kind=leftouter (resourcecontainers | where type =~ 'microsoft.resources/subscriptions' | project subscriptionName=name, subscriptionId) on subscriptionId
+| extend wafPolicyId = tolower(id)
+| join kind=inner (
     resources
-    | where type =~ 'microsoft.network/ApplicationGatewayWebApplicationFirewallPolicies'
-    | where array_length(properties.applicationGateways) > 0
-    | join kind=leftouter (resourcecontainers | where type =~ 'microsoft.resources/subscriptions' | project subscriptionName=name, subscriptionId) on subscriptionId
-    | project PolicyName=name, SubscriptionName=subscriptionName, SubscriptionId=subscriptionId, PolicyId=id, Location=location, EnabledState=tostring(properties.policySettings.state), Mode=tostring(properties.policySettings.mode), RequestBodyCheck=tobool(properties.policySettings.requestBodyCheck), ApplicationGateways=properties.applicationGateways
+    | where type =~ 'microsoft.network/applicationgateways'
+    | where isnotempty(properties.firewallPolicy.id)
+    | extend wafPolicyId = tolower(tostring(properties.firewallPolicy.id))
+    | project wafPolicyId, GatewayName=name
+) on wafPolicyId
+| summarize ApplicationGateways=make_list(GatewayName), PolicyName=any(name), SubscriptionName=any(subscriptionName), SubscriptionId=any(subscriptionId), PolicyId=any(id), RequestBodyCheck=any(tobool(properties.policySettings.requestBodyCheck)), EnabledState=any(tostring(properties.policySettings.state)), Mode=any(tostring(properties.policySettings.mode)) by wafPolicyId
 "@
 
     $policies = @()
@@ -63,7 +69,7 @@ function Test-Assessment-26879 {
     }
     catch {
         Write-PSFMessage "Azure Resource Graph query failed: $($_.Exception.Message)" -Tag Test -Level Warning
-        Add-ZtTestResultDetail -SkippedBecause NotSupported
+        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result 'No subscription found or the signed in user does not have access to the Azure subscription to perform this test.'
         return
     }
     #endregion Data Collection
@@ -71,8 +77,8 @@ function Test-Assessment-26879 {
     #region Assessment Logic
     # Skip test if no policies found
     if ($policies.Count -eq 0) {
-        Write-PSFMessage 'No Application Gateway WAF policies attached to Application Gateways found.' -Tag Test -Level Verbose
-        Add-ZtTestResultDetail -SkippedBecause NotApplicable
+        Write-PSFMessage 'No Application Gateway WAF policies found.' -Tag Test -Level Verbose
+        Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'No Application Gateway WAF policies attached to Application Gateways found across subscriptions.'
         return
     }
 
@@ -102,8 +108,8 @@ function Test-Assessment-26879 {
         $policyMd = "[$(Get-SafeMarkdown $item.PolicyName)]($policyLink)"
         $subMd = "[$(Get-SafeMarkdown $item.SubscriptionName)]($subLink)"
 
-        # Extract Application Gateway names from the ARG-returned array of objects
-        $appGwNames = @($item.ApplicationGateways | ForEach-Object { ($_.id -split '/')[-1] }) -join ', '
+        # Extract Application Gateway names from the ARG make_list array
+        $appGwNames = @($item.ApplicationGateways) -join ', '
         $appGwMd = Get-SafeMarkdown $appGwNames
 
         # Calculate status indicators
@@ -120,8 +126,8 @@ function Test-Assessment-26879 {
 
 ## [{0}]({1})
 
-| Policy name | Subscription name | Attached Application Gateway | Enabled state | WAF mode | Request body check | Status |
-| :---------- | :---------------- | :--------------------------- | :-----------: | :------: | :----------------: | :----: |
+| Policy name | Subscription name | Attached Application Gateways | Enabled state | WAF mode | Request body check | Status |
+| :---------- | :---------------- | :---------------------------- | :-----------: | :------: | :----------------: | :----: |
 {2}
 
 '@
