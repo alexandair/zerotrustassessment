@@ -190,10 +190,10 @@ function Test-Assessment-35011 {
             if ($superUserObj.IsServicePrincipal -and $superUserObj.Id) {
                 # Only create portal link when we have a valid object ID
                 $spPortalLink = "https://entra.microsoft.com/#view/Microsoft_AAD_IAM/ManagedAppMenuBlade/~/Overview/objectId/$($superUserObj.Id)/appId/$($superUserObj.AppId)"
-                $displayText = "[$(Get-SafeMarkdown($superUserObj.DisplayName))]($spPortalLink)"
+                $displayText = "[$(Get-SafeMarkdown $superUserObj.DisplayName)]($spPortalLink)"
             }
             else {
-                $displayText = Get-SafeMarkdown($superUserObj.DisplayName)
+                $displayText = Get-SafeMarkdown $superUserObj.DisplayName
             }
             $mdInfo += "| $displayText | $($superUserObj.AccountType) |`n"
         }
