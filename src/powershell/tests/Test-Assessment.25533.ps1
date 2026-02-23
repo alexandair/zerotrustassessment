@@ -238,8 +238,8 @@ Resources
         elseif ($protectionMode -eq 'VirtualNetworkInherited') {
             # Rule: If protectionMode is "VirtualNetworkInherited"
             if ([string]::IsNullOrWhiteSpace($pip.ipConfigId)) {
-                # Rule: If ipConfiguration is missing or null → NotApplicable/Unknown (unattached, not in a VNET context)
-                $isCompliant = $null
+                # Rule: If ipConfiguration is missing or null → Fail (unattached, cannot inherit protection from any VNET)
+                $isCompliant = $false
                 $vnetDdosStatus = 'N/A'
             }
             else {
@@ -331,11 +331,12 @@ Resources
     if ($passed) {
         $testResultMarkdown = "✅ DDoS Protection is enabled for all Public IP addresses, either through DDoS IP Protection enabled directly on the public IP or through DDoS Network Protection enabled on the associated VNET.`n`n%TestResult%"
     }
-    elseif ($failedCount -eq 0 -and $unknownCount -gt 0) {
-        $testResultMarkdown = "✅ DDoS Protection is enabled for all resolvable Public IP addresses. $unknownCount public IP(s) could not be fully evaluated due to query failures and require manual verification.`n`n%TestResult%"
-    }
     else {
-        $testResultMarkdown = "❌ DDoS Protection is not enabled for one or more Public IP addresses. This includes public IPs with DDoS protection explicitly disabled, and public IPs that inherit from a VNET that does not have a DDoS Protection Plan enabled.`n`n%TestResult%"
+        $failMessage = "❌ DDoS Protection is not enabled for one or more Public IP addresses. This includes public IPs with DDoS protection explicitly disabled, and public IPs that inherit from a VNET that does not have a DDoS Protection Plan enabled."
+        if ($unknownCount -gt 0) {
+            $failMessage += " $unknownCount public IP(s) could not be fully evaluated due to query failures and require manual verification."
+        }
+        $testResultMarkdown = "$failMessage`n`n%TestResult%"
     }
     #endregion Assessment Logic
 
