@@ -207,29 +207,31 @@ function Test-Assessment-35040 {
     # - Fail if no enabled policies with ReviewMailbox exist
     # - Pass if Collection Policies are configured, rules target enterprise AI apps, and at least one enabled policy with ReviewMailbox exists
 
-    $hasActiveCollectionPolicies = ($collectionPolicies | Where-Object { $_.Enabled -eq $true -and $_.Activities.Count -ge 1 }).Count -ge 1
-    $hasEnterpriseAIRules = $enterpriseAIRules.Count -ge 1
-    $hasEnabledPoliciesWithReviewMailbox = $enabledPoliciesWithReviewMailbox.Count -ge 1
-
     if ($errorMsg) {
         $passed = $false
         $testResultMarkdown = "❌ Unable to determine enterprise AI monitoring status due to error:`n`n$errorMsg`n`n%TestResult%"
     }
-    elseif (-not $hasActiveCollectionPolicies) {
-        $passed = $false
-        $testResultMarkdown = "❌ No enabled collection policies found for data ingestion.`n`n%TestResult%"
-    }
-    elseif (-not $hasEnterpriseAIRules) {
-        $passed = $false
-        $testResultMarkdown = "❌ No Communication Compliance rules targeting enterprise AI apps were found.`n`n%TestResult%"
-    }
-    elseif (-not $hasEnabledPoliciesWithReviewMailbox) {
-        $passed = $false
-        $testResultMarkdown = "❌ No Communication Compliance policies are enabled with ReviewMailbox configured, creating a gap where enterprise AI data exposure and policy violations cannot be detected and investigated.`n`n%TestResult%"
-    }
     else {
-        $passed = $true
-        $testResultMarkdown = "✅ Collection Policies are configured for data ingestion, Communication Compliance rules are configured to target enterprise AI apps (ConnectedAIApp and/or UnifiedGenAIWorkloads identified in RuleXml), AND at least one Communication Compliance policy is ENABLED with a ReviewMailbox configured, enabling the organization to detect and investigate unauthorized data sharing and policy violations through enterprise AI interactions.`n`n%TestResult%"
+        $hasActiveCollectionPolicies = ($collectionPolicies | Where-Object { $_.Enabled -eq $true -and $_.Activities.Count -ge 1 }).Count -ge 1
+        $hasEnterpriseAIRules = $enterpriseAIRules.Count -ge 1
+        $hasEnabledPoliciesWithReviewMailbox = $enabledPoliciesWithReviewMailbox.Count -ge 1
+
+        if (-not $hasActiveCollectionPolicies) {
+            $passed = $false
+            $testResultMarkdown = "❌ No enabled collection policies found for data ingestion.`n`n%TestResult%"
+        }
+        elseif (-not $hasEnterpriseAIRules) {
+            $passed = $false
+            $testResultMarkdown = "❌ No Communication Compliance rules targeting enterprise AI apps were found.`n`n%TestResult%"
+        }
+        elseif (-not $hasEnabledPoliciesWithReviewMailbox) {
+            $passed = $false
+            $testResultMarkdown = "❌ No Communication Compliance policies are enabled with ReviewMailbox configured, creating a gap where enterprise AI data exposure and policy violations cannot be detected and investigated.`n`n%TestResult%"
+        }
+        else {
+            $passed = $true
+            $testResultMarkdown = "✅ Collection Policies are configured for data ingestion, Communication Compliance rules are configured to target enterprise AI apps (ConnectedAIApp and/or UnifiedGenAIWorkloads identified in RuleXml), AND at least one Communication Compliance policy is ENABLED with a ReviewMailbox configured, enabling the organization to detect and investigate unauthorized data sharing and policy violations through enterprise AI interactions.`n`n%TestResult%"
+        }
     }
 
     #endregion Assessment Logic
