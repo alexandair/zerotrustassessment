@@ -47,10 +47,12 @@ function Test-Assessment-26879 {
 
     Write-ZtProgress -Activity $activity -Status 'Querying Azure Resource Graph'
 
+    # Inner join with Application Gateways filters out orphaned WAF policies (not attached to any gateway).
+    # summarize collapses to one row per policy, collecting gateway names into a list.
+    # leftouter join adds subscription name on the already-reduced result set.
     $argQuery = @"
 resources
 | where type =~ 'microsoft.network/ApplicationGatewayWebApplicationFirewallPolicies'
-| join kind=leftouter (resourcecontainers | where type =~ 'microsoft.resources/subscriptions' | project subscriptionName=name, subscriptionId) on subscriptionId
 | extend wafPolicyId = tolower(id)
 | join kind=inner (
     resources
@@ -59,7 +61,12 @@ resources
     | extend wafPolicyId = tolower(tostring(properties.firewallPolicy.id))
     | project wafPolicyId, GatewayName=name
 ) on wafPolicyId
-| summarize ApplicationGateways=make_list(GatewayName), PolicyName=any(name), SubscriptionName=any(subscriptionName), SubscriptionId=any(subscriptionId), PolicyId=any(id), RequestBodyCheck=any(tobool(properties.policySettings.requestBodyCheck)), EnabledState=any(tostring(properties.policySettings.state)), Mode=any(tostring(properties.policySettings.mode)) by wafPolicyId
+| summarize ApplicationGateways=make_list(GatewayName), PolicyName=any(name), subscriptionId=any(subscriptionId), PolicyId=any(id), RequestBodyCheck=any(tobool(properties.policySettings.requestBodyCheck)), EnabledState=any(tostring(properties.policySettings.state)), Mode=any(tostring(properties.policySettings.mode)) by wafPolicyId
+| join kind=leftouter (
+    resourcecontainers
+    | where type =~ 'microsoft.resources/subscriptions'
+    | project subscriptionId, SubscriptionName=name
+) on subscriptionId
 "@
 
     $policies = @()
@@ -109,8 +116,7 @@ resources
         $subMd = "[$(Get-SafeMarkdown $item.SubscriptionName)]($subLink)"
 
         # Extract Application Gateway names from the ARG make_list array
-        $appGwNames = @($item.ApplicationGateways) -join ', '
-        $appGwMd = Get-SafeMarkdown $appGwNames
+        $appGwMd = @($item.ApplicationGateways) -join ', '
 
         # Calculate status indicators
         $requestBodyCheckDisplay = if ($item.RequestBodyCheck -eq $true) { '✅ Enabled' } else { '❌ Disabled' }
@@ -132,7 +138,7 @@ resources
 
 '@
 
-    $mdInfo = $formatTemplate -f $reportTitle, $portalLink, $tableRows.TrimEnd("`n")
+    $mdInfo = $formatTemplate -f $reportTitle, $portalLink, $tableRows
 
     $testResultMarkdown = $testResultMarkdown -replace '%TestResult%', $mdInfo
     #endregion Report Generation
