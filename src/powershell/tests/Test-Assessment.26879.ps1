@@ -11,7 +11,7 @@
     Test ID: 26879
     Category: Azure Network Security
     Pillar: Network
-    Required API: Application Gateway WAF Policies
+    Required API: Azure Resource Graph - ApplicationGatewayWebApplicationFirewallPolicies
 #>
 
 function Test-Assessment-26879 {
@@ -45,130 +45,44 @@ function Test-Assessment-26879 {
         return
     }
 
-    Write-ZtProgress -Activity $activity -Status 'Enumerating subscriptions'
+    Write-ZtProgress -Activity $activity -Status 'Querying Azure Resource Graph'
 
-    # Initialize variables
-    $subscriptions = @()
+    # Query all Application Gateway WAF policies attached to at least one Application Gateway
+    $argQuery = @"
+    resources
+    | where type =~ 'microsoft.network/ApplicationGatewayWebApplicationFirewallPolicies'
+    | where array_length(properties.applicationGateways) > 0
+    | join kind=leftouter (resourcecontainers | where type =~ 'microsoft.resources/subscriptions' | project subscriptionName=name, subscriptionId) on subscriptionId
+    | project PolicyName=name, SubscriptionName=subscriptionName, SubscriptionId=subscriptionId, PolicyId=id, Location=location, EnabledState=tostring(properties.policySettings.state), Mode=tostring(properties.policySettings.mode), RequestBodyCheck=tobool(properties.policySettings.requestBodyCheck), ApplicationGateways=properties.applicationGateways
+"@
+
     $policies = @()
-    $anySuccessfulAccess = 0
-    $apiVersion = "2025-03-01"
-
     try {
-        $subscriptions = Get-AzSubscription -ErrorAction Stop
+        $policies = @(Invoke-ZtAzureResourceGraphRequest -Query $argQuery)
+        Write-PSFMessage "ARG Query returned $($policies.Count) records" -Tag Test -Level VeryVerbose
     }
     catch {
-        Write-PSFMessage "Unable to retrieve Azure subscriptions: $_" -Level Warning
-    }
-
-    if ($subscriptions.Count -eq 0) {
-        Write-PSFMessage "No Azure subscriptions found." -Level Warning
-        Add-ZtTestResultDetail -SkippedBecause NoAzureAccess
+        Write-PSFMessage "Azure Resource Graph query failed: $($_.Exception.Message)" -Tag Test -Level Warning
+        Add-ZtTestResultDetail -SkippedBecause NotSupported
         return
-    }
-
-    # Collect WAF policies from all subscriptions
-    foreach ($sub in $subscriptions) {
-        Write-ZtProgress -Activity $activity -Status "Checking subscription: $($sub.Name)"
-
-        $path = "/subscriptions/$($sub.Id)/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies?api-version=$apiVersion"
-        $response = Invoke-AzRestMethod -Path $path -ErrorAction SilentlyContinue
-
-        # Skip if request failed completely
-        if (-not $response -or $null -eq $response.StatusCode) {
-            Write-PSFMessage "Failed to query subscription '$($sub.Name)'. Skipping." -Level Warning
-            continue
-        }
-
-        # Handle access denied for this subscription - skip and continue to next
-        if ($response.StatusCode -eq 403) {
-            Write-PSFMessage "Access denied to subscription '$($sub.Name)': HTTP $($response.StatusCode). Skipping." -Level Verbose
-            continue
-        }
-
-        # Handle other HTTP errors - skip this subscription
-        if ($response.StatusCode -ge 400) {
-            Write-PSFMessage "Error querying subscription '$($sub.Name)': HTTP $($response.StatusCode). Skipping." -Level Warning
-            continue
-        }
-
-        # Count successful accesses
-        $anySuccessfulAccess++
-
-        # No content or no policies in this subscription
-        if (-not $response.Content) {
-            continue
-        }
-
-        $policiesJson = $response.Content | ConvertFrom-Json
-
-        if (-not $policiesJson.value -or $policiesJson.value.Count -eq 0) {
-            continue
-        }
-
-        # Collect policies from this subscription - only those attached to Application Gateways
-        foreach ($policyResource in $policiesJson.value) {
-            # Filter: Only include policies attached to at least one Application Gateway
-            $appGateways = $policyResource.properties.applicationGateways
-            if (-not $appGateways -or $appGateways.Count -eq 0) {
-                Write-PSFMessage "Excluding unattached WAF policy '$($policyResource.name)' from evaluation." -Level Verbose
-                continue
-            }
-
-            # Extract Application Gateway names
-            $appGatewayNames = @()
-            foreach ($gw in $appGateways) {
-                $gwName = ($gw.id -split '/')[-1]
-                $appGatewayNames += $gwName
-            }
-
-            $policies += [PSCustomObject]@{
-                SubscriptionId        = $sub.Id
-                SubscriptionName      = $sub.Name
-                PolicyName            = $policyResource.name
-                PolicyId              = $policyResource.id
-                Location              = $policyResource.location
-                EnabledState          = $policyResource.properties.policySettings.state
-                Mode                  = $policyResource.properties.policySettings.mode
-                RequestBodyCheck      = $policyResource.properties.policySettings.requestBodyCheck
-                ApplicationGateways   = $appGatewayNames -join ', '
-                ApplicationGatewayCount = $appGateways.Count
-            }
-        }
     }
     #endregion Data Collection
 
     #region Assessment Logic
-    $passed = $false
-
     # Skip test if no policies found
     if ($policies.Count -eq 0) {
-        if ($anySuccessfulAccess -eq 0) {
-            # All subscriptions were inaccessible
-            Write-PSFMessage "No accessible Azure subscriptions found." -Level Warning
-            Add-ZtTestResultDetail -SkippedBecause NoAzureAccess
-        } else {
-            # Subscriptions accessible but no WAF policies attached to Application Gateways
-            Write-PSFMessage "No Application Gateway WAF policies attached to Application Gateways found across subscriptions." -Tag Test -Level Verbose
-            Add-ZtTestResultDetail -SkippedBecause NotApplicable
-        }
+        Write-PSFMessage 'No Application Gateway WAF policies attached to Application Gateways found.' -Tag Test -Level Verbose
+        Add-ZtTestResultDetail -SkippedBecause NotApplicable
         return
     }
 
     # Check if all policies have request body inspection enabled
-    $allCompliant = $true
-    foreach ($policy in $policies) {
-        if ($policy.RequestBodyCheck -ne $true) {
-            $allCompliant = $false
-            break
-        }
-    }
+    $passed = ($policies | Where-Object { $_.RequestBodyCheck -ne $true }).Count -eq 0
 
-    if ($allCompliant) {
-        $passed = $true
+    if ($passed) {
         $testResultMarkdown = "✅ All Application Gateway WAF policies attached to Application Gateways have request body inspection enabled.`n`n%TestResult%"
     }
     else {
-        $passed = $false
         $testResultMarkdown = "❌ One or more Application Gateway WAF policies attached to Application Gateways have request body inspection disabled.`n`n%TestResult%"
     }
     #endregion Assessment Logic
@@ -182,12 +96,15 @@ function Test-Assessment-26879 {
 
     # Prepare table rows
     $tableRows = ''
-    foreach ($item in $policies) {
+    foreach ($item in $policies | Sort-Object SubscriptionName, PolicyName) {
         $policyLink = "https://portal.azure.com/#resource$($item.PolicyId)"
         $subLink = "https://portal.azure.com/#resource/subscriptions/$($item.SubscriptionId)"
         $policyMd = "[$(Get-SafeMarkdown $item.PolicyName)]($policyLink)"
         $subMd = "[$(Get-SafeMarkdown $item.SubscriptionName)]($subLink)"
-        $appGwMd = Get-SafeMarkdown $item.ApplicationGateways
+
+        # Extract Application Gateway names from the ARG-returned array of objects
+        $appGwNames = @($item.ApplicationGateways | ForEach-Object { ($_.id -split '/')[-1] }) -join ', '
+        $appGwMd = Get-SafeMarkdown $appGwNames
 
         # Calculate status indicators
         $requestBodyCheckDisplay = if ($item.RequestBodyCheck -eq $true) { '✅ Enabled' } else { '❌ Disabled' }
