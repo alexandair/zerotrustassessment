@@ -204,9 +204,7 @@ function Test-Assessment-35011 {
     $mdInfo += "**Note:** Super user configuration is not available through the Azure portal and must be managed via PowerShell using the AipService module.`n"
 
     # Replace placeholder with actual detailed info
-    if ($mdInfo) {
-        $testResultMarkdown = $testResultMarkdown -replace "%TestResult%", $mdInfo
-    }
+    $testResultMarkdown = $testResultMarkdown -replace "%TestResult%", $mdInfo
     #endregion Report Generation
 
     $params = @{
