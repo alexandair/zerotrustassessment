@@ -199,17 +199,18 @@ function Test-Assessment-35040 {
 
     #region Assessment Logic
     $passed = $false
+    $customStatus = $null
 
     # Evaluation logic:
-    # - Fail if there was an error during data collection
+    # - Investigate if there was an error during data collection
     # - Fail if no Collection Policies are configured or policies are disabled
     # - Fail if no Communication Compliance rules target enterprise AI apps
     # - Fail if no enabled policies with ReviewMailbox exist
     # - Pass if Collection Policies are configured, rules target enterprise AI apps, and at least one enabled policy with ReviewMailbox exists
 
     if ($errorMsg) {
-        $passed = $false
-        $testResultMarkdown = "❌ Unable to determine enterprise AI monitoring status due to error:`n`n$errorMsg`n`n%TestResult%"
+        $customStatus = 'Investigate'
+        $testResultMarkdown = "⚠️ Unable to determine enterprise AI monitoring status due to error:`n`n$errorMsg`n`n%TestResult%"
     }
     else {
         $hasActiveCollectionPolicies = ($collectionPolicies | Where-Object { $_.Enabled -eq $true -and $_.Activities.Count -ge 1 }).Count -ge 1
@@ -358,6 +359,10 @@ No enabled policies with review mailbox configured were found.
         Title  = 'Communication compliance monitoring is configured for enterprise AI tools'
         Status = $passed
         Result = $testResultMarkdown
+    }
+
+    if ($null -ne $customStatus) {
+        $params.CustomStatus = $customStatus
     }
 
     Add-ZtTestResultDetail @params
