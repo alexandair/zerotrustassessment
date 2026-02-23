@@ -155,18 +155,18 @@ function Test-Assessment-35011 {
 
     if ($investigateFlag) {
         if ($errorMsg) {
-            $testResultMarkdown = "⚠️ Unable to determine super user configuration due to permissions or connection issues.`n`n"
+            $testResultMarkdown = "⚠️ Unable to determine super user configuration due to permissions or connection issues.`n`n%TestResult%"
         }
         else {
-            $testResultMarkdown = "⚠️ Super user feature is enabled with members configured (review accounts and consider using Azure PIM for just-in-time access instead of permanent enablement).`n`n"
+            $testResultMarkdown = "⚠️ Super user feature is enabled with members configured (review accounts and consider using Azure PIM for just-in-time access instead of permanent enablement).`n`n%TestResult%"
         }
         $customStatus = 'Investigate'
     }
     elseif ($passed) {
-        $testResultMarkdown = "✅ Super user feature is disabled with at least one member pre-configured for emergency access (review members to ensure they're still needed).`n`n"
+        $testResultMarkdown = "✅ Super user feature is disabled with at least one member pre-configured for emergency access (review members to ensure they're still needed).`n`n%TestResult%"
     }
     else {
-        $testResultMarkdown = "❌ Super user feature is disabled with no members configured, OR feature is enabled with no members.`n`n"
+        $testResultMarkdown = "❌ Super user feature is disabled with no members configured, OR feature is enabled with no members.`n`n%TestResult%"
     }
 
     # Build detailed information section
@@ -202,9 +202,6 @@ function Test-Assessment-35011 {
     }
 
     $mdInfo += "**Note:** Super user configuration is not available through the Azure portal and must be managed via PowerShell using the AipService module.`n"
-
-    # Add mdInfo to the main markdown
-    $testResultMarkdown += "%TestResult%"
 
     # Replace placeholder with actual detailed info
     if ($mdInfo) {
