@@ -137,7 +137,7 @@ function Test-Assessment-25398 {
 
             foreach ($segment in $appData.Segments) {
                 $destinationHost = $segment.destinationHost
-                $ports = $segment.port
+                $ports = $segment.ports
                 $protocol = $segment.protocol
 
                 # Check if this segment targets a DC host AND has RDP access (port 3389 over TCP)
