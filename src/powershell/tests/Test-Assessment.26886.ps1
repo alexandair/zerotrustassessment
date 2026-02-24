@@ -51,12 +51,16 @@ function Test-Assessment-26886 {
         if ($IpConfigurationId -match '/providers/Microsoft.Network/networkInterfaces/') {
             # It's a NIC - extract the NIC resource path and query it
             $nicPath = ($IpConfigurationId -split '/ipConfigurations/')[0] + '?api-version=2023-04-01'
-            $nic = Invoke-ZtAzureRequest -Path $nicPath -SingleResult
+            $nic = Invoke-ZtAzureRequest -Path $nicPath
 
-            # Find the subnet from the IP configurations
+            # Find the subnet from the matching IP configuration
+            $ipConfigName = ($IpConfigurationId -split '/ipConfigurations/')[-1]
             foreach ($ipConfig in $nic.properties.ipConfigurations) {
-                if ($ipConfig.properties.subnet.id) {
-                    return $ipConfig.properties.subnet.id
+                if (($ipConfig.id -eq $IpConfigurationId) -or ($ipConfig.name -eq $ipConfigName)) {
+                    if ($ipConfig.properties.subnet.id) {
+                        return $ipConfig.properties.subnet.id
+                    }
+                    break
                 }
             }
         }
@@ -65,24 +69,34 @@ function Test-Assessment-26886 {
             # For external LBs, they're not associated with a subnet directly
             # We need to find a backend pool NIC to trace to the VNET
             $lbPath = ($IpConfigurationId -split '/frontendIPConfigurations/')[0] + '?api-version=2023-04-01'
-            $lb = Invoke-ZtAzureRequest -Path $lbPath -SingleResult
+            $lb = Invoke-ZtAzureRequest -Path $lbPath
 
-            # Check frontend IP configuration for subnet (internal LB)
+            # Check the matching frontend IP configuration for subnet (internal LB)
+            $frontendIpConfigName = ($IpConfigurationId -split '/frontendIPConfigurations/')[-1]
+            $matchedFrontend = $false
             foreach ($frontendIp in $lb.properties.frontendIPConfigurations) {
-                if ($frontendIp.properties.subnet.id) {
-                    return $frontendIp.properties.subnet.id
+                if (($frontendIp.id -eq $IpConfigurationId) -or ($frontendIp.name -eq $frontendIpConfigName)) {
+                    $matchedFrontend = $true
+                    if ($frontendIp.properties.subnet.id) {
+                        return $frontendIp.properties.subnet.id
+                    }
+                    break
                 }
             }
 
-            # For external LB, check backend pool NICs
+            # For external LB (no subnet on matched frontend), check backend pool NICs
             foreach ($backendPool in $lb.properties.backendAddressPools) {
                 foreach ($backendAddress in $backendPool.properties.backendIPConfigurations) {
                     if ($backendAddress.id -match '/providers/Microsoft.Network/networkInterfaces/') {
                         $nicPath = ($backendAddress.id -split '/ipConfigurations/')[0] + '?api-version=2023-04-01'
-                        $nic = Invoke-ZtAzureRequest -Path $nicPath -SingleResult
+                        $nic = Invoke-ZtAzureRequest -Path $nicPath
+                        $backendIpConfigName = ($backendAddress.id -split '/ipConfigurations/')[-1]
                         foreach ($ipConfig in $nic.properties.ipConfigurations) {
-                            if ($ipConfig.properties.subnet.id) {
-                                return $ipConfig.properties.subnet.id
+                            if (($ipConfig.id -eq $backendAddress.id) -or ($ipConfig.name -eq $backendIpConfigName)) {
+                                if ($ipConfig.properties.subnet.id) {
+                                    return $ipConfig.properties.subnet.id
+                                }
+                                break
                             }
                         }
                     }
@@ -92,9 +106,20 @@ function Test-Assessment-26886 {
         elseif ($IpConfigurationId -match '/providers/Microsoft.Network/applicationGateways/') {
             # Application Gateway - get the gateway's subnet from gateway IP configurations
             $appGwPath = ($IpConfigurationId -split '/frontendIPConfigurations/')[0] + '?api-version=2023-04-01'
-            $appGw = Invoke-ZtAzureRequest -Path $appGwPath -SingleResult
+            $appGw = Invoke-ZtAzureRequest -Path $appGwPath
 
-            # Get subnet from gateway IP configurations
+            # For private frontend IPs, the matched frontendIPConfiguration carries a subnet directly
+            $frontendIpConfigName = ($IpConfigurationId -split '/frontendIPConfigurations/')[-1]
+            foreach ($frontendIp in $appGw.properties.frontendIPConfigurations) {
+                if (($frontendIp.id -eq $IpConfigurationId) -or ($frontendIp.name -eq $frontendIpConfigName)) {
+                    if ($frontendIp.properties.subnet.id) {
+                        return $frontendIp.properties.subnet.id
+                    }
+                    break  # Matched config has no subnet (public frontend); fall through
+                }
+            }
+
+            # Fall back to gateway IP configurations (subnet where the gateway itself is deployed)
             foreach ($gwIpConfig in $appGw.properties.gatewayIPConfigurations) {
                 if ($gwIpConfig.properties.subnet.id) {
                     return $gwIpConfig.properties.subnet.id
@@ -250,7 +275,7 @@ resources
             # Q3: Check if the VNET has DDoS Network Protection enabled
             try {
                 $vnetPath = $vnetId + '?api-version=2023-04-01'
-                $vnet = Invoke-ZtAzureRequest -Path $vnetPath -SingleResult
+                $vnet = Invoke-ZtAzureRequest -Path $vnetPath
 
                 $ddosEnabled = $vnet.properties.enableDdosProtection -eq $true
                 $ddosPlanId = $vnet.properties.ddosProtectionPlan.id
@@ -421,7 +446,7 @@ resources
             $subscriptionLink = "[$(Get-SafeMarkdown $result.SubscriptionName)]($portalSubscriptionBaseLink/$($result.SubscriptionId)/overview)"
             $pipLink = "[$(Get-SafeMarkdown $result.PublicIpName)]($portalResourceBaseLink$($result.PublicIpId)/diagnostics)"
             $protectionType = $result.ProtectionType
-            $associatedVnet = $result.AssociatedVnet
+            $associatedVnet = Get-SafeMarkdown $result.AssociatedVnet
             $notificationsStatus = if ($result.DDoSProtectionNotifications) { '✅' } else { '❌' }
             $flowLogsStatus = if ($result.DDoSMitigationFlowLogs) { '✅' } else { '❌' }
             $reportsStatus = if ($result.DDoSMitigationReports) { '✅' } else { '❌' }
