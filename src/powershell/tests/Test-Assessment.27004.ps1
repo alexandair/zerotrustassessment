@@ -16,7 +16,7 @@
     Test ID: 27004
     Category: Global Secure Access
     Required API: networkAccess/tlsInspectionPolicies (beta) with $expand=policyRules
-    System Bypass List: Maintained by Microsoft, documented in FAQ
+    System Bypass List: assets/27004-system-bypass-fqdns.json (sourced from GSA backend team; manually maintained until API is available)
 #>
 
 function Test-Assessment-27004 {
@@ -41,52 +41,25 @@ function Test-Assessment-27004 {
     $activity = 'Checking TLS inspection bypass rules for redundant system destinations'
     Write-ZtProgress -Activity $activity -Status 'Loading system bypass reference list'
 
-    # System bypass list maintained by Microsoft
-    # Reference: https://learn.microsoft.com/en-us/entra/global-secure-access/faq-transport-layer-security#what-destinations-are-included-in-the-system-bypass
-    $systemBypassList = @(
-        'Adobe CRS',
-        'AplusPC UCC Regions',
-        'App Center',
-        'Apple ESS Push Services',
-        'Azure Diagnostics',
-        'Azure IoT Hub',
-        'Azure Management',
-        'Azure WAN Listener',
-        'Centanet',
-        'Central Plaza e-Order',
-        'Cisco Umbrella Proxy',
-        'DocuSign',
-        'Dropbox',
-        'e-Szigno',
-        'Global Secure Access Diagnostics',
-        'Guardz Device Agent',
-        'iCloud',
-        'Likr Load Balancer',
-        'MediaTek',
-        'Microsigner',
-        'Microsoft Graph',
-        'Microsoft Login Services',
-        'O2 Moje Login',
-        'OpenSpace Solutions',
-        'Power BI External',
-        'Signal',
-        'TeamViewer',
-        'Visual Studio Telemetry',
-        'Webex',
-        'WhatsApp',
-        'Windows Update',
-        'ZDX Cloud',
-        'Zscaler Beta',
-        'Zscaler Two',
-        'Zoom'
-    )
+    # Load system bypass FQDN list from config file.
+    # The JSON is sourced from the GSA backend team because the API does not expose these FQDNs.
+    # Spec: 27004-system-bypass-fqdns.json must be kept up to date manually until an API is available.
+    $dataFilePath = Join-Path $PSScriptRoot '..' 'assets' '27004-system-bypass-fqdns.json' | Resolve-Path -ErrorAction SilentlyContinue
+    if (-not $dataFilePath -or -not (Test-Path $dataFilePath)) {
+        Write-PSFMessage "System bypass FQDN config file not found: $dataFilePath" -Tag Test -Level Warning
+        Add-ZtTestResultDetail -SkippedBecause NotSupported
+        return
+    }
 
-    # Convert to lowercase for case-insensitive comparison
-    $systemBypassLower = $systemBypassList | ForEach-Object { $_.ToLower() }
+    $bypassConfig = Get-Content $dataFilePath -Raw | ConvertFrom-Json
+    $systemFqdns = @($bypassConfig.fqdns)
+    $systemFqdnsLower = $systemFqdns | ForEach-Object { $_.ToLower() }
+    Write-PSFMessage "Loaded $($systemFqdns.Count) system bypass FQDNs from config (last updated: $($bypassConfig.metadata.lastUpdated))" -Tag Test -Level VeryVerbose
 
     Write-ZtProgress -Activity $activity -Status 'Querying TLS inspection policies and rules'
 
     $tlsPolicies = @()
+    $errorMsg = $null
 
     try {
         $tlsPolicies = Invoke-ZtGraphRequest `
@@ -95,121 +68,161 @@ function Test-Assessment-27004 {
             -ApiVersion beta
     }
     catch {
-        Write-PSFMessage "Failed to retrieve TLS inspection policies: $_" -Tag Test -Level Error
-        return
+        $errorMsg = $_
+        Write-PSFMessage "Failed to retrieve TLS inspection policies: $errorMsg" -Tag Test -Level Warning
     }
     #endregion Data Collection
 
     #region Assessment Logic
     $testResultMarkdown = ''
     $passed = $false
+    $customStatus = $null
 
-    if ($null -eq $tlsPolicies -or $tlsPolicies.Count -eq 0) {
+    if ($errorMsg) {
+        # API call failed - unable to determine status
+        $passed = $false
+        $customStatus = 'Investigate'
+        $testResultMarkdown = "⚠️ Unable to retrieve TLS inspection policies due to API error or insufficient permissions.`n`n%TestResult%"
+    }
+    elseif ($null -eq $tlsPolicies -or $tlsPolicies.Count -eq 0) {
         # No TLS inspection policies configured - prerequisite not met
         Write-PSFMessage 'TLS inspection is not configured in this tenant.' -Tag Test -Level Verbose
         Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'TLS inspection is not configured in this tenant. This check is not applicable until a TLS inspection policy is created.'
         return
     }
+    else {
 
     Write-ZtProgress -Activity $activity -Status 'Analyzing bypass rules for redundancies'
 
-        $allBypassRules = [System.Collections.Generic.List[object]]::new()
-        $redundantRules = [System.Collections.Generic.List[object]]::new()
-        $uniqueRules = [System.Collections.Generic.List[object]]::new()
+    $allBypassRules = [System.Collections.Generic.List[object]]::new()
+    $redundantRules = [System.Collections.Generic.List[object]]::new()
+    $uniqueRules = [System.Collections.Generic.List[object]]::new()
 
-        foreach ($policy in $tlsPolicies) {
-            if ($null -eq $policy.policyRules) {
+    foreach ($policy in $tlsPolicies) {
+        if ($null -eq $policy.policyRules) {
+            continue
+        }
+
+        $bypassRules = @($policy.policyRules | Where-Object { $_.action -eq 'bypass' })
+
+        foreach ($rule in $bypassRules) {
+            # Skip auto-created system rules
+            if ($rule.description -like 'Auto-created TLS rule*') {
                 continue
             }
 
-            $bypassRules = @($policy.policyRules | Where-Object { $_.action -eq 'bypass' })
+            $destinations = @()
+            $destinationTypes = @()
+            $isRedundant = $false
+            $matchedPairs = [System.Collections.Generic.List[object]]::new()
 
-            foreach ($rule in $bypassRules) {
-                # Skip auto-created system rules
-                if ($rule.description -like 'Auto-created TLS rule*') {
-                    continue
-                }
+            # Extract destinations from matchingConditions
+            if ($null -ne $rule.matchingConditions -and $null -ne $rule.matchingConditions.destinations) {
+                foreach ($dest in $rule.matchingConditions.destinations) {
+                    if ($null -ne $dest.values) {
+                        $destinations += $dest.values
 
-                $destinations = @()
-                $destinationTypes = @()
-                $isRedundant = $false
-                $matchedSystemBypass = ''
-
-                # Extract destinations from matchingConditions
-                if ($null -ne $rule.matchingConditions -and $null -ne $rule.matchingConditions.destinations) {
-                    foreach ($dest in $rule.matchingConditions.destinations) {
-                        if ($null -ne $dest.values) {
-                            $destinations += $dest.values
-
-                            # Determine destination type from @odata.type
-                            if ($dest.'@odata.type' -like '*tlsInspectionFqdnDestination*') {
-                                $destinationTypes += 'FQDN'
-                            }
-                            elseif ($dest.'@odata.type' -like '*tlsInspectionWebCategoryDestination*') {
-                                $destinationTypes += 'Category'
-                            }
+                        # Determine destination type from @odata.type
+                        if ($dest.'@odata.type' -like '*tlsInspectionFqdnDestination*') {
+                            $destinationTypes += 'FQDN'
+                        }
+                        elseif ($dest.'@odata.type' -like '*tlsInspectionWebCategoryDestination*') {
+                            $destinationTypes += 'Category'
                         }
                     }
-                }
-
-                # Check each destination against system bypass list
-                foreach ($destination in $destinations) {
-                    $destLower = $destination.ToLower()
-
-                    # Check for matches in system bypass list
-                    foreach ($systemBypass in $systemBypassLower) {
-                        # Exact match or substring match (indicating overlap)
-                        if ($destLower -like "*$systemBypass*" -or $systemBypass -like "*$destLower*") {
-                            $isRedundant = $true
-                            $matchedSystemBypass = $systemBypassList[$systemBypassLower.IndexOf($systemBypass)]
-                            break
-                        }
-                    }
-
-                    if ($isRedundant) {
-                        break
-                    }
-                }
-
-                $ruleInfo = [PSCustomObject]@{
-                    PolicyName          = $policy.name
-                    PolicyId            = $policy.id
-                    RuleName            = $rule.name
-                    RuleId              = $rule.id
-                    DestinationType     = if ($destinationTypes.Count -gt 0) {
-                        ($destinationTypes | Select-Object -Unique) -join ' / '
-                    } else { 'None' }
-                    Destinations        = $destinations
-                    DestinationSummary  = if ($destinations.Count -gt 0) {
-                        ($destinations | Select-Object -First 3) -join ', ' + $(if ($destinations.Count -gt 3) { " (+$($destinations.Count - 3) more)" } else { '' })
-                    } else { 'None' }
-                    IsRedundant         = $isRedundant
-                    MatchedSystemBypass = $matchedSystemBypass
-                    Status              = if ($isRedundant) { 'Redundant' } else { 'Unique' }
-                }
-
-                $allBypassRules.Add($ruleInfo)
-
-                if ($isRedundant) {
-                    $redundantRules.Add($ruleInfo)
-                }
-                else {
-                    $uniqueRules.Add($ruleInfo)
                 }
             }
-        }
 
-        # Evaluate test result per spec evaluation logic
-        if ($redundantRules.Count -eq 0) {
-            # No custom bypass rules OR custom rules exist but none are redundant - pass
-            $passed = $true
-            $testResultMarkdown = "✅ All custom TLS inspection bypass rules target unique destinations not covered by the system bypass list.`n`n%TestResult%"
+            # Check each destination FQDN against the system bypass FQDN list.
+            # Matching rules per spec:
+            #   Exact:              custom 'dropbox.com'       matches system 'dropbox.com'
+            #   Subdomain wildcard: custom 'www.dropbox.com'   matches system '*.dropbox.com'
+            #   Wildcard root:      custom 'dropbox.com'       matches system '*.dropbox.com'
+            #   Wildcard-wildcard:  custom '*.dropbox.com'     matches system '*.dropbox.com'
+            #   Double-wildcard:    custom 'x.britishairways.com' matches system '*.britishairways.*'
+            foreach ($destination in $destinations) {
+                $destLower = $destination.ToLower().Trim()
+
+                for ($i = 0; $i -lt $systemFqdnsLower.Count; $i++) {
+                    $sysFqdn = $systemFqdnsLower[$i]
+                    $isMatch = $false
+
+                    if ($destLower -eq $sysFqdn) {
+                        # Exact match (covers wildcard-to-wildcard too)
+                        $isMatch = $true
+                    }
+                    elseif ($sysFqdn -match '^\*\.([^.]+)\.\*$') {
+                        # Double-wildcard: *.domain.* — match any FQDN containing 'domain' as a segment
+                        $mid = [regex]::Escape($Matches[1])
+                        if ($destLower -match "(^|\.)$mid\.") { $isMatch = $true }
+                    }
+                    elseif ($sysFqdn -match '^\*\.(.+)$') {
+                        # Standard wildcard: *.domain.com
+                        $suffix = $Matches[1]
+                        # Subdomain or root domain both considered redundant
+                        if ($destLower -like "*.$suffix" -or $destLower -eq $suffix) { $isMatch = $true }
+                        # Custom wildcard for the same domain: *.domain.com
+                        elseif ($destLower -eq "*.$suffix") { $isMatch = $true }
+                    }
+                    elseif ($destLower -match '^\*\.(.+)$') {
+                        # Custom is wildcard: *.domain.com — check if system covers the base domain
+                        $customSuffix = $Matches[1]
+                        if ($sysFqdn -eq $customSuffix -or $sysFqdn -eq "*.$customSuffix") { $isMatch = $true }
+                    }
+
+                    if ($isMatch) {
+                        $matchedPairs.Add([PSCustomObject]@{
+                            CustomFqdn = $destination
+                            SystemFqdn = $systemFqdns[$i]
+                        })
+                        break  # move to next destination once a system match is found for this one
+                    }
+                }
+            }
+
+            $isRedundant = $matchedPairs.Count -gt 0
+
+            $ruleInfo = [PSCustomObject]@{
+                PolicyName          = $policy.name
+                PolicyId            = $policy.id
+                RuleName            = $rule.name
+                RuleId              = $rule.id
+                DestinationType     = if ($destinationTypes.Count -gt 0) {
+                    ($destinationTypes | Select-Object -Unique) -join ' / '
+                } else { 'None' }
+                Destinations        = $destinations
+                DestinationSummary  = if ($destinations.Count -gt 0) {
+                    $first5 = ($destinations | Select-Object -First 5) -join ', '
+                    if ($destinations.Count -gt 5) { "$first5 (+$($destinations.Count - 5) more)" } else { $first5 }
+                } else { 'None' }
+                IsRedundant         = $isRedundant
+                MatchedPairs        = $matchedPairs
+                Status              = if ($isRedundant) { 'Redundant' } else { 'Unique' }
+            }
+
+            $allBypassRules.Add($ruleInfo)
+
+            if ($isRedundant) {
+                $redundantRules.Add($ruleInfo)
+            }
+            else {
+                $uniqueRules.Add($ruleInfo)
+            }
         }
-        else {
-            # Any matches found - fail with list of redundant rules
-            $passed = $false
-            $testResultMarkdown = "❌ Found custom bypass rules that duplicate system bypass destinations; these rules are redundant and can be removed to simplify policy management.`n`n%TestResult%"
+    }
+
+    # Evaluate test result per spec evaluation logic
+    if ($redundantRules.Count -eq 0) {
+        # No custom bypass rules OR custom rules exist but none are redundant - pass
+        $passed = $true
+        $testResultMarkdown = "✅ All custom TLS inspection bypass rules target unique destinations not covered by the system bypass list.`n`n%TestResult%"
+    }
+    else {
+        # Any matches found - fail with list of redundant rules
+        $passed = $false
+        $testResultMarkdown = "❌ Found custom bypass rules that duplicate system bypass destinations; these rules are redundant and can be removed to simplify policy management.`n`n%TestResult%"
         }
+    }
     #endregion Assessment Logic
 
     #region Report Generation
@@ -260,10 +273,9 @@ function Test-Assessment-27004 {
             foreach ($rule in $redundantRules) {
                 $policyName = Get-SafeMarkdown -Text $rule.PolicyName
                 $ruleName = Get-SafeMarkdown -Text $rule.RuleName
-                $redundantDest = Get-SafeMarkdown -Text ($rule.Destinations -join ', ')
-                $matchedBypass = Get-SafeMarkdown -Text $rule.MatchedSystemBypass
-
-                $redundantTable += "| $policyName | $ruleName | $redundantDest | $matchedBypass |`n"
+                $redundantDests = ($rule.MatchedPairs | ForEach-Object { Get-SafeMarkdown -Text $_.CustomFqdn }) -join ', '
+                $matchedBypasses = ($rule.MatchedPairs | ForEach-Object { Get-SafeMarkdown -Text $_.SystemFqdn }) -join ', '
+                $redundantTable += "| $policyName | $ruleName | $redundantDests | $matchedBypasses |`n"
             }
         }
 
@@ -281,6 +293,9 @@ function Test-Assessment-27004 {
         Title  = 'TLS inspection custom bypass rules do not duplicate system bypass destinations'
         Status = $passed
         Result = $testResultMarkdown
+    }
+    if ($customStatus) {
+        $params.CustomStatus = $customStatus
     }
     Add-ZtTestResultDetail @params
 }
