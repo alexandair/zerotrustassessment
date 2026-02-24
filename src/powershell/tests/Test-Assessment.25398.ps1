@@ -88,13 +88,14 @@ function Test-Assessment-25398 {
                     $ports = $segment.ports
 
                     # Check if port 88 is explicitly configured (must be discrete, not in a range)
-                    if ($ports -contains '88') {
+                    # API returns ports as ranges even for single ports (e.g. '88-88'), so check both forms
+                    if ($ports -contains '88' -or $ports -contains '88-88') {
                         $has88 = $true
                         $hostsWith88 += $segment.destinationHost
                     }
 
                     # Check if port 389 is explicitly configured (must be discrete, not in a range)
-                    if ($ports -contains '389') {
+                    if ($ports -contains '389' -or $ports -contains '389-389') {
                         $has389 = $true
                         $hostsWith389 += $segment.destinationHost
                     }
@@ -141,7 +142,7 @@ function Test-Assessment-25398 {
                 $protocol = $segment.protocol
 
                 # Check if this segment targets a DC host AND has RDP access (port 3389 over TCP)
-                if ($dcHosts.ContainsKey($destinationHost) -and $protocol -eq 'tcp' -and (Test-PortIncluded -Ports $ports -TargetPort 3389)) {
+                if ($dcHosts.ContainsKey($destinationHost) -and $protocol -match 'tcp' -and (Test-PortIncluded -Ports $ports -TargetPort 3389)) {
                     $rdpApps += [PSCustomObject]@{
                         AppId = $appData.App.appId
                         AppName = $appData.App.displayName
@@ -167,10 +168,10 @@ function Test-Assessment-25398 {
             $appData = $allAppSegments[$appId]
 
             foreach ($segment in $appData.Segments) {
-                $ports = $segment.port
+                $ports = $segment.ports
                 $protocol = $segment.protocol
 
-                if ($protocol -eq 'tcp' -and (Test-PortIncluded -Ports $ports -TargetPort 3389)) {
+                if ($protocol -match 'tcp' -and (Test-PortIncluded -Ports $ports -TargetPort 3389)) {
                     $rdpApps += [PSCustomObject]@{
                         AppId = $appData.App.appId
                         AppName = $appData.App.displayName
@@ -216,8 +217,25 @@ function Test-Assessment-25398 {
 
     $caPolicies = Invoke-ZtGraphRequest -RelativeUri "policies/authenticationStrengthPolicies/$authStrengthId/usage" -ApiVersion beta
 
-    # Filter for enabled policies only
-    $enabledPolicies = $caPolicies | Where-Object { $_.state -eq 'enabled' }
+    # The /usage response is { mfa: [...], none: [...] } with minimal policy stubs (no conditions/grantControls).
+    # Collect IDs from both arrays, then fetch each full policy to get conditions and grantControls.
+    $usagePolicyIds = @()
+    if ($caPolicies.mfa)  { $usagePolicyIds += $caPolicies.mfa  | Select-Object -ExpandProperty id }
+    if ($caPolicies.none) { $usagePolicyIds += $caPolicies.none | Select-Object -ExpandProperty id }
+    $usagePolicyIds = $usagePolicyIds | Select-Object -Unique
+
+    $enabledPolicies = @()
+    foreach ($policyId in $usagePolicyIds) {
+        try {
+            $fullPolicy = Invoke-ZtGraphRequest -RelativeUri "policies/conditionalAccessPolicies/$policyId" -ApiVersion beta
+            if ($fullPolicy -and $fullPolicy.state -eq 'enabled') {
+                $enabledPolicies += $fullPolicy
+            }
+        }
+        catch {
+            Write-PSFMessage "Unable to fetch full details for CA policy $policyId : $_" -Tag Test -Level Warning
+        }
+    }
 
     Write-PSFMessage "Found $($enabledPolicies.Count) enabled CA policy/policies with phishing-resistant MFA" -Tag Test -Level VeryVerbose
 
@@ -410,6 +428,7 @@ $policyRows
 
     $params = @{
         TestId = '25398'
+        Title  = 'Domain controller RDP access is protected by phishing-resistant authentication through Global Secure Access'
         Status = $passed
         Result = $testResultMarkdown
     }
