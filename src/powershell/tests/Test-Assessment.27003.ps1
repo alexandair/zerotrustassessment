@@ -31,6 +31,42 @@ function Test-Assessment-27003 {
     [CmdletBinding()]
     param()
 
+    #region Helper Functions
+
+    function Invoke-LogAnalyticsQuery {
+        param(
+            [Parameter(Mandatory)]
+            [string] $Uri,
+            [Parameter(Mandatory)]
+            [string] $Query
+        )
+
+        $body = @{ query = $Query } | ConvertTo-Json
+        $response = Invoke-AzRestMethod -Method POST -Uri $Uri -Payload $body -ErrorAction Stop
+
+        if ($response.StatusCode -ge 400) {
+            $errorBody = $response.Content | ConvertFrom-Json -ErrorAction SilentlyContinue
+            $errorMsg = if ($errorBody.error) { $errorBody.error.message } else { "HTTP $($response.StatusCode)" }
+            throw "Log Analytics query failed: $errorMsg"
+        }
+
+        $parsed = $response.Content | ConvertFrom-Json
+        $table = $parsed.Tables[0]
+
+        # Convert columnar response to PSCustomObjects
+        $results = @()
+        foreach ($row in $table.Rows) {
+            $obj = [ordered]@{}
+            for ($i = 0; $i -lt $table.Columns.Count; $i++) {
+                $obj[$table.Columns[$i].ColumnName] = $row[$i]
+            }
+            $results += [PSCustomObject]$obj
+        }
+        return $results
+    }
+
+    #endregion Helper Functions
+
     #region Data Collection
     Write-PSFMessage '🟦 Start TLS inspection failure rate evaluation' -Tag Test -Level VeryVerbose
 
@@ -40,7 +76,17 @@ function Test-Assessment-27003 {
     # Prerequisite: TLS inspection must be configured
     Write-ZtProgress -Activity $activity -Status 'Checking TLS inspection policies'
 
-    $tlsInspectionPolicies = Invoke-ZtGraphRequest -RelativeUri 'networkAccess/tlsInspectionPolicies' -ApiVersion beta
+    try {
+        $tlsInspectionPolicies = Invoke-ZtGraphRequest -RelativeUri 'networkAccess/tlsInspectionPolicies' -ApiVersion beta
+    }
+    catch {
+        if ($_.Exception.Message -match '403|Forbidden') {
+            Write-PSFMessage 'Access denied to networkAccess/tlsInspectionPolicies. The tenant may not be licensed for Global Secure Access or the app is missing required permissions.' -Tag Test -Level Warning
+            Add-ZtTestResultDetail -SkippedBecause NotSupported
+            return
+        }
+        throw
+    }
 
     if (-not $tlsInspectionPolicies -or $tlsInspectionPolicies.Count -eq 0) {
         Write-PSFMessage 'No TLS inspection policies configured.' -Tag Test -Level VeryVerbose
@@ -115,35 +161,7 @@ function Test-Assessment-27003 {
 
     Write-PSFMessage "Using workspace from diagnostic setting '$matchedSettingName': $workspaceResourceId" -Tag Test -Level VeryVerbose
 
-    # Helper: Execute a KQL query against the Log Analytics workspace
     $logAnalyticsQueryUri = "${resourceManagementUrl}$($workspaceResourceId.TrimStart('/'))/api/query?api-version=2020-08-01"
-
-    function Invoke-LogAnalyticsQuery {
-        param([string]$Query)
-
-        $body = @{ query = $Query } | ConvertTo-Json
-        $response = Invoke-AzRestMethod -Method POST -Uri $logAnalyticsQueryUri -Payload $body -ErrorAction Stop
-
-        if ($response.StatusCode -ge 400) {
-            $errorBody = $response.Content | ConvertFrom-Json -ErrorAction SilentlyContinue
-            $errorMsg = if ($errorBody.error) { $errorBody.error.message } else { "HTTP $($response.StatusCode)" }
-            throw "Log Analytics query failed: $errorMsg"
-        }
-
-        $parsed = $response.Content | ConvertFrom-Json
-        $table = $parsed.Tables[0]
-
-        # Convert columnar response to PSCustomObjects
-        $results = @()
-        foreach ($row in $table.Rows) {
-            $obj = [ordered]@{}
-            for ($i = 0; $i -lt $table.Columns.Count; $i++) {
-                $obj[$table.Columns[$i].ColumnName] = $row[$i]
-            }
-            $results += [PSCustomObject]$obj
-        }
-        return $results
-    }
 
     # Q1: Calculate TLS inspection failure rate over the last 7 days
     Write-ZtProgress -Activity $activity -Status 'Querying TLS inspection failure rate (last 7 days)'
@@ -161,7 +179,7 @@ NetworkAccessTraffic
 "@
 
     try {
-        $q1Results = @(Invoke-LogAnalyticsQuery -Query $q1Kql)
+        $q1Results = @(Invoke-LogAnalyticsQuery -Uri $logAnalyticsQueryUri -Query $q1Kql)
     }
     catch {
         Write-PSFMessage "Failed to query Log Analytics: $_" -Tag Test -Level Warning
@@ -207,7 +225,7 @@ NetworkAccessTraffic
 "@
 
         try {
-            $q2Results = @(Invoke-LogAnalyticsQuery -Query $q2Kql)
+            $q2Results = @(Invoke-LogAnalyticsQuery -Uri $logAnalyticsQueryUri -Query $q2Kql)
         }
         catch {
             Write-PSFMessage "Failed to query top failure destinations: $_" -Tag Test -Level Warning
@@ -233,7 +251,7 @@ NetworkAccessTraffic
 "@
 
         try {
-            $q3Results = @(Invoke-LogAnalyticsQuery -Query $q3Kql)
+            $q3Results = @(Invoke-LogAnalyticsQuery -Uri $logAnalyticsQueryUri -Query $q3Kql)
         }
         catch {
             Write-PSFMessage "Failed to query daily trend: $_" -Tag Test -Level Warning
