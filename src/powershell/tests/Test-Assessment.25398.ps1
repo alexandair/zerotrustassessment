@@ -85,7 +85,7 @@ function Test-Assessment-25398 {
                 $hostsWith389 = @()
 
                 foreach ($segment in $segments) {
-                    $ports = $segment.port
+                    $ports = $segment.ports
 
                     # Check if port 88 is explicitly configured (must be discrete, not in a range)
                     if ($ports -contains '88') {
