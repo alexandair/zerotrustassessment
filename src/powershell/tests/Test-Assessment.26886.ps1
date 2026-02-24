@@ -73,18 +73,20 @@ function Test-Assessment-26886 {
 
             # Check the matching frontend IP configuration for subnet (internal LB)
             $frontendIpConfigName = ($IpConfigurationId -split '/frontendIPConfigurations/')[-1]
-            $matchedFrontend = $false
+            $frontendHasNoSubnet = $false
             foreach ($frontendIp in $lb.properties.frontendIPConfigurations) {
                 if (($frontendIp.id -eq $IpConfigurationId) -or ($frontendIp.name -eq $frontendIpConfigName)) {
-                    $matchedFrontend = $true
                     if ($frontendIp.properties.subnet.id) {
                         return $frontendIp.properties.subnet.id
                     }
+                    # Matched the correct entry but it has no subnet (external LB frontend)
+                    $frontendHasNoSubnet = $true
                     break
                 }
             }
 
-            # For external LB (no subnet on matched frontend), check backend pool NICs
+            # For external LB (matched frontend has no subnet), check backend pool NICs
+            if (-not $frontendHasNoSubnet) { return $null }  # No match found at all — bail out
             foreach ($backendPool in $lb.properties.backendAddressPools) {
                 foreach ($backendAddress in $backendPool.properties.backendIPConfigurations) {
                     if ($backendAddress.id -match '/providers/Microsoft.Network/networkInterfaces/') {
@@ -326,10 +328,8 @@ resources
         }
 
         # Evaluate diagnostic settings
-        $hasValidDiagSetting = $false
         $allDestinationTypes = @()
-        $enabledCategories = @()
-        $missingCategories = @()
+        $hasValidDiagSetting = $false
 
         foreach ($setting in $diagSettings) {
             $workspaceId = $setting.properties.workspaceId
@@ -347,37 +347,48 @@ resources
                 if ($eventHubAuthRuleId) { $destTypes += 'Event Hub' }
                 $allDestinationTypes += $destTypes
 
-                # Collect enabled log categories
-                $logs = $setting.properties.logs
-                foreach ($log in $logs) {
+                # Collect enabled log categories for this single setting
+                $settingEnabledCategories = @()
+                foreach ($log in $setting.properties.logs) {
                     if ($log.enabled) {
                         $categoryName = if ($log.category) { $log.category } else { $log.categoryGroup }
-                        if ($categoryName) {
-                            $enabledCategories += $categoryName
-                        }
+                        if ($categoryName) { $settingEnabledCategories += $categoryName }
                     }
+                }
+
+                # Per spec: a single setting must cover all three required categories
+                $missingInThisSetting = $requiredLogCategories | Where-Object { $_ -notin $settingEnabledCategories }
+                if ($missingInThisSetting.Count -eq 0) {
+                    $hasValidDiagSetting = $true
                 }
             }
         }
 
-        # Deduplicate
-        $enabledCategories = $enabledCategories | Select-Object -Unique
+        # Deduplicate destination types across settings
         $allDestinationTypes = $allDestinationTypes | Select-Object -Unique
 
-        # Check if all required DDoS log categories are enabled
-        $missingCategories = $requiredLogCategories | Where-Object { $_ -notin $enabledCategories }
-        $hasAllRequiredCategories = $missingCategories.Count -eq 0
-        $hasDestination = $allDestinationTypes.Count -gt 0
-
-        $hasValidDiagSetting = $hasAllRequiredCategories -and $hasDestination
+        # Per spec: at least one single diagnostic setting must have all three required log
+        # categories enabled with a valid destination (categories must not be split across settings)
 
         $status = if ($hasValidDiagSetting) { 'Pass' } else { 'Fail' }
         $destinationType = if ($allDestinationTypes.Count -gt 0) { $allDestinationTypes -join ', ' } else { 'None' }
 
-        # Determine enabled status for each required log category
-        $notificationsEnabled = 'DDoSProtectionNotifications' -in $enabledCategories
-        $flowLogsEnabled = 'DDoSMitigationFlowLogs' -in $enabledCategories
-        $reportsEnabled = 'DDoSMitigationReports' -in $enabledCategories
+        # Collect all enabled categories across all settings (for display/table purposes only)
+        $allEnabledCategories = @()
+        foreach ($setting in $diagSettings) {
+            foreach ($log in $setting.properties.logs) {
+                if ($log.enabled) {
+                    $categoryName = if ($log.category) { $log.category } else { $log.categoryGroup }
+                    if ($categoryName) { $allEnabledCategories += $categoryName }
+                }
+            }
+        }
+        $allEnabledCategories = $allEnabledCategories | Select-Object -Unique
+
+        # Determine enabled status for each required log category (for table display)
+        $notificationsEnabled = 'DDoSProtectionNotifications' -in $allEnabledCategories
+        $flowLogsEnabled = 'DDoSMitigationFlowLogs' -in $allEnabledCategories
+        $reportsEnabled = 'DDoSMitigationReports' -in $allEnabledCategories
 
         $evaluationResults += [PSCustomObject]@{
             SubscriptionId                = $pip.SubscriptionId
