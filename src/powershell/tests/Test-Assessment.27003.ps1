@@ -45,12 +45,17 @@ function Test-Assessment-27003 {
         $response = Invoke-AzRestMethod -Method POST -Uri $Uri -Payload $body -ErrorAction Stop
 
         if ($response.StatusCode -ge 400) {
-            $errorBody = $response.Content | ConvertFrom-Json -ErrorAction SilentlyContinue
-            $errorMsg = if ($errorBody.error) { $errorBody.error.message } else { "HTTP $($response.StatusCode)" }
+            try {
+                $errorBody = $response.Content | ConvertFrom-Json -ErrorAction Stop
+                $errorMsg = if ($errorBody.error) { $errorBody.error.message } else { "HTTP $($response.StatusCode)" }
+            }
+            catch {
+                $errorMsg = "HTTP $($response.StatusCode)"
+            }
             throw "Log Analytics query failed: $errorMsg"
         }
 
-        $parsed = $response.Content | ConvertFrom-Json
+        $parsed = $response.Content | ConvertFrom-Json -ErrorAction Stop
         $table = $parsed.Tables[0]
 
         # Convert columnar response to PSCustomObjects
@@ -135,7 +140,7 @@ function Test-Assessment-27003 {
         throw
     }
 
-    $diagnosticSettings = ($diagResult.Content | ConvertFrom-Json).value
+    $diagnosticSettings = ($diagResult.Content | ConvertFrom-Json -ErrorAction Stop).value
 
     # Find a workspace that has NetworkAccessTrafficLogs enabled
     $workspaceResourceId = $null
