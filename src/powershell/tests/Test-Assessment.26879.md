@@ -2,10 +2,14 @@ Azure Application Gateway Web Application Firewall (WAF) provides centralized pr
 
 **Remediation action**
 
+Overview of WAF capabilities on Application Gateway including request body inspection
 - [What is Azure Web Application Firewall on Azure Application Gateway?](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/ag-overview)
+
+Guidance on creating and configuring WAF policies including request body inspection settings
 - [Create Web Application Firewall policies for Application Gateway](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/create-waf-policy-ag)
+
+FAQ and best practices for tuning WAF including request body inspection limits
 - [Tuning Web Application Firewall for Azure Application Gateway](https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/application-gateway-waf-faq)
-- FAQ and best practices for tuning WAF including request body inspection limits
 
 <!--- Results --->
 %TestResult%
