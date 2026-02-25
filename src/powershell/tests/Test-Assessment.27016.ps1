@@ -122,21 +122,20 @@ resources
         $allRateLimitRules = @($policy.CustomRules | Where-Object { $_.ruleType -eq 'RateLimitRule' })
         $enabledRateLimitRules = @($allRateLimitRules | Where-Object { $_.state -eq 'Enabled' })
         $rateLimitRuleCountDisplay = if ($allRateLimitRules.Count -gt 0) { "✅ $($allRateLimitRules.Count)" } else { '❌ 0' }
-        $rateLimitThresholdDisplay = 'N/A' #if ($allRateLimitRules.Count -gt 0) { "✅ $($allRateLimitRules[0].rateLimitThreshold)" } else { '❌ 0' }
         $ruleStateDisplay = if ($enabledRateLimitRules.Count -ge 1) { '✅ Enabled' } else { '❌ Disabled' }
         $enabledStateDisplay = if ($policy.EnabledState -eq 'Enabled') { '✅ Enabled' } else { '❌ Disabled' }
         $modeDisplay = if ($policy.Mode -eq 'Prevention') { '✅ Prevention' } else { '❌ Detection' }
         $statusDisplay = if ($policy.EnabledState -eq 'Enabled' -and $policy.Mode -eq 'Prevention' -and $enabledRateLimitRules.Count -ge 1) { '✅' } else { '❌' }
 
-        $tableRows += "| $policyMd | $subMd | $enabledStateDisplay | $modeDisplay | $rateLimitRuleCountDisplay | $rateLimitThresholdDisplay | $ruleStateDisplay | $statusDisplay |`n"
+        $tableRows += "| $policyMd | $subMd | $enabledStateDisplay | $modeDisplay | $rateLimitRuleCountDisplay | $ruleStateDisplay | $statusDisplay |`n"
     }
 
     $formatTemplate = @'
 
 ## [{0}]({1})
 
-| Policy name | Subscription name | Policy state | Mode | Rate limit rules | Rate limit threshold | Rule state | Status |
-| :---------- | :---------------- | :----------- | :--- | :--------------- | :------------------- | :--------- | :----- |
+| Policy name | Subscription name | Policy state | Mode | Rate limit rules | Rule state | Status |
+| :---------- | :---------------- | :----------- | :--- | :--------------- | :--------- | :----- |
 {2}
 
 '@
