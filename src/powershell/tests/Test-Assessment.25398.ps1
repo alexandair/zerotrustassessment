@@ -355,7 +355,7 @@ WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
 
     #region Report Generation
 
-    $privateAccessLink = 'https://entra.microsoft.com/#view/Microsoft_Azure_Network_Access/PrivateApplications.ReactView'
+    $privateAccessLink = 'https://entra.microsoft.com/#view/Microsoft_AAD_IAM/EnterpriseApplicationListBladeV3/fromNav/globalSecureAccess/applicationType/GlobalSecureAccessApplication'
     $caPoliciesLink = 'https://entra.microsoft.com/#view/Microsoft_AAD_ConditionalAccess/ConditionalAccessBlade/~/Policies'
 
     # Build DC Hosts section
