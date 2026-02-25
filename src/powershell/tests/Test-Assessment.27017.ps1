@@ -123,7 +123,15 @@ resources
         $allJsRules = @($policy.CustomRules | Where-Object { $_.action -eq 'JSChallenge' })
         $enabledJsRules = @($allJsRules | Where-Object { $_.state -eq 'Enabled' })
         $jsRuleCountDisplay = if ($allJsRules.Count -gt 0) { "✅ $($allJsRules.Count)" } else { '❌ 0' }
-        $ruleStateDisplay = if ($enabledJsRules.Count -ge 1) { '✅ Enabled' } else { '❌ Disabled' }
+        $ruleStateDisplay = if ($allJsRules.Count -eq 0) {
+            'N/A'
+        }
+        elseif ($enabledJsRules.Count -ge 1) {
+            '✅ Enabled'
+        }
+        else {
+            '❌ Disabled'
+        }
         $cookieExpiry = if ($policy.JsChallengeCookieExpirationInMins) { $policy.JsChallengeCookieExpirationInMins } else { 'N/A' }
         $enabledStateDisplay = if ($policy.EnabledState -eq 'Enabled') { '✅ Enabled' } else { '❌ Disabled' }
         $modeDisplay = if ($policy.Mode -eq 'Prevention') { '✅ Prevention' } else { '❌ Detection' }
@@ -137,7 +145,7 @@ resources
 ## [{0}]({1})
 
 | Policy name | Subscription name | Policy state | Mode | JS Challenge rules | Rule state | JavaScript Challenge expiration (mins) | Status |
-| :---------- | :---------------- | :----------- | :--- | :----------------- | :--------- | :--------------------------------------| :----- |
+| :---------- | :---------------- | :----------- | :--- | :----------------- | :--------- | :------------------------------------- | :----- |
 {2}
 
 '@
