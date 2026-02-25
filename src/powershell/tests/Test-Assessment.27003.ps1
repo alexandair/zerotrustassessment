@@ -36,13 +36,13 @@ function Test-Assessment-27003 {
     function Invoke-LogAnalyticsQuery {
         param(
             [Parameter(Mandatory)]
-            [string] $Uri,
+            [string] $Path,
             [Parameter(Mandatory)]
             [string] $Query
         )
 
         $body = @{ query = $Query } | ConvertTo-Json
-        $response = Invoke-ZtAzureRequest -Uri $Uri -Method POST -Payload $body -FullResponse
+        $response = Invoke-ZtAzureRequest -Path $Path -Method POST -Payload $body -FullResponse
 
         if ($response.StatusCode -ge 400) {
             try {
@@ -120,11 +120,8 @@ function Test-Assessment-27003 {
     # Find Log Analytics workspace from Entra diagnostic settings
     Write-ZtProgress -Activity $activity -Status 'Querying diagnostic settings for Log Analytics workspace'
 
-    $resourceManagementUrl = $azContext.Environment.ResourceManagerUrl
-    $diagnosticSettingsUri = $resourceManagementUrl + 'providers/microsoft.aadiam/diagnosticsettings?api-version=2017-04-01-preview'
-
     try {
-        $diagResult = Invoke-ZtAzureRequest -Uri $diagnosticSettingsUri -FullResponse
+        $diagResult = Invoke-ZtAzureRequest -Path '/providers/microsoft.aadiam/diagnosticsettings?api-version=2017-04-01-preview' -FullResponse
 
         if ($diagResult.StatusCode -eq 403) {
             Write-PSFMessage 'The signed-in user does not have access to check diagnostic settings.' -Level Verbose
@@ -166,7 +163,7 @@ function Test-Assessment-27003 {
 
     Write-PSFMessage "Using workspace from diagnostic setting '$matchedSettingName': $workspaceResourceId" -Tag Test -Level VeryVerbose
 
-    $logAnalyticsQueryUri = "${resourceManagementUrl}$($workspaceResourceId.TrimStart('/'))/query?api-version=2017-10-01"
+    $logAnalyticsQueryUri = "$workspaceResourceId/query?api-version=2017-10-01"
 
     # Q1: Calculate TLS inspection failure rate over the last 7 days
     Write-ZtProgress -Activity $activity -Status 'Querying TLS inspection failure rate (last 7 days)'
@@ -184,7 +181,7 @@ NetworkAccessTraffic
 "@
 
     try {
-        $q1Results = @(Invoke-LogAnalyticsQuery -Uri $logAnalyticsQueryUri -Query $q1Kql)
+        $q1Results = @(Invoke-LogAnalyticsQuery -Path $logAnalyticsQueryUri -Query $q1Kql)
     }
     catch {
         Write-PSFMessage "Failed to query Log Analytics: $_" -Tag Test -Level Warning
@@ -230,7 +227,7 @@ NetworkAccessTraffic
 "@
 
         try {
-            $q2Results = @(Invoke-LogAnalyticsQuery -Uri $logAnalyticsQueryUri -Query $q2Kql)
+            $q2Results = @(Invoke-LogAnalyticsQuery -Path $logAnalyticsQueryUri -Query $q2Kql)
         }
         catch {
             Write-PSFMessage "Failed to query top failure destinations: $_" -Tag Test -Level Warning
@@ -256,7 +253,7 @@ NetworkAccessTraffic
 "@
 
         try {
-            $q3Results = @(Invoke-LogAnalyticsQuery -Uri $logAnalyticsQueryUri -Query $q3Kql)
+            $q3Results = @(Invoke-LogAnalyticsQuery -Path $logAnalyticsQueryUri -Query $q3Kql)
         }
         catch {
             Write-PSFMessage "Failed to query daily trend: $_" -Tag Test -Level Warning
