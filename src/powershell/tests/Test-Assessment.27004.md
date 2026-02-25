@@ -4,7 +4,7 @@ Global Secure Access maintains a system bypass list of destinations that are aut
 
 Review and remove redundant custom bypass rules in the Microsoft Entra admin center under Global Secure Access > Secure > TLS inspection policies
 
-Reference the current system bypass list: 
+Reference the current system bypass list:
 - [FAQ: What destinations are included in the system bypass?](https://learn.microsoft.com/en-us/entra/global-secure-access/faq-transport-layer-security#what-destinations-are-included-in-the-system-bypass)
 
 <!--- Results --->

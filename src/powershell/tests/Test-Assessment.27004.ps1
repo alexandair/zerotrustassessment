@@ -56,6 +56,10 @@ function Test-Assessment-27004 {
     $systemFqdnsLower = $systemFqdns | ForEach-Object { $_.ToLower() }
     Write-PSFMessage "Loaded $($systemFqdns.Count) system bypass FQDNs from config (last updated: $($bypassConfig.metadata.lastUpdated))" -Tag Test -Level VeryVerbose
 
+    # System recommended bypass categories (from priority 65000 rule)
+    $systemCategories = @('Education', 'Finance', 'Government', 'HealthAndMedicine')
+    $systemCategoriesLower = $systemCategories | ForEach-Object { $_.ToLower() }
+
     Write-ZtProgress -Activity $activity -Status 'Querying TLS inspection policies and rules'
 
     $tlsPolicies = @()
@@ -139,41 +143,60 @@ function Test-Assessment-27004 {
             #   Double-wildcard:    custom 'x.britishairways.com' matches system '*.britishairways.*'
             foreach ($destination in $destinations) {
                 $destLower = $destination.ToLower().Trim()
+                $destType = if ($destinationTypeMap.ContainsKey($destination)) { $destinationTypeMap[$destination] } else { 'FQDN' }
 
-                for ($i = 0; $i -lt $systemFqdnsLower.Count; $i++) {
-                    $sysFqdn = $systemFqdnsLower[$i]
-                    $isMatch = $false
-                    $matchType = ''
+                # Check if this is a web category destination
+                if ($destType -eq 'Category') {
+                    # Check against system recommended bypass categories
+                    for ($i = 0; $i -lt $systemCategoriesLower.Count; $i++) {
+                        if ($destLower -eq $systemCategoriesLower[$i]) {
+                            $matchedPairs.Add([PSCustomObject]@{
+                                CustomFqdn = $destination
+                                SystemFqdn = $systemCategories[$i]
+                                MatchType  = 'Exact'
+                                DestType   = 'Category'
+                            })
+                            break
+                        }
+                    }
+                }
+                else {
+                    # Check FQDN against system bypass FQDN list
+                    for ($i = 0; $i -lt $systemFqdnsLower.Count; $i++) {
+                        $sysFqdn = $systemFqdnsLower[$i]
+                        $isMatch = $false
+                        $matchType = ''
 
-                    if ($destLower -eq $sysFqdn) {
-                        # Exact match (covers wildcard-to-wildcard too)
-                        $isMatch = $true; $matchType = 'Exact'
-                    }
-                    elseif ($sysFqdn -match '^\*\.([^.]+)\.\*$') {
-                        # Double-wildcard: *.domain.* — match any FQDN containing 'domain' as a segment
-                        $mid = [regex]::Escape($Matches[1])
-                        if ($destLower -match "(^|\.)$mid\.") { $isMatch = $true; $matchType = 'Wildcard' }
-                    }
-                    elseif ($sysFqdn -match '^\*\.(.+)$') {
-                        # Standard wildcard: *.domain.com
-                        $suffix = $Matches[1]
-                        if ($destLower -like "*.$suffix" -or $destLower -eq $suffix) { $isMatch = $true; $matchType = 'Subdomain' }
-                        elseif ($destLower -eq "*.$suffix") { $isMatch = $true; $matchType = 'Wildcard' }
-                    }
-                    elseif ($destLower -match '^\*\.(.+)$') {
-                        # Custom is wildcard: *.domain.com — check if system covers the base domain
-                        $customSuffix = $Matches[1]
-                        if ($sysFqdn -eq $customSuffix -or $sysFqdn -eq "*.$customSuffix") { $isMatch = $true; $matchType = 'Wildcard' }
-                    }
+                        if ($destLower -eq $sysFqdn) {
+                            # Exact match (covers wildcard-to-wildcard too)
+                            $isMatch = $true; $matchType = 'Exact'
+                        }
+                        elseif ($sysFqdn -match '^\*\.([^.]+)\.\*$') {
+                            # Double-wildcard: *.domain.* — match any FQDN containing 'domain' as a segment
+                            $mid = [regex]::Escape($Matches[1])
+                            if ($destLower -match "(^|\.)$mid\.") { $isMatch = $true; $matchType = 'Wildcard' }
+                        }
+                        elseif ($sysFqdn -match '^\*\.(.+)$') {
+                            # Standard wildcard: *.domain.com
+                            $suffix = $Matches[1]
+                            if ($destLower -like "*.$suffix" -or $destLower -eq $suffix) { $isMatch = $true; $matchType = 'Subdomain' }
+                            elseif ($destLower -eq "*.$suffix") { $isMatch = $true; $matchType = 'Wildcard' }
+                        }
+                        elseif ($destLower -match '^\*\.(.+)$') {
+                            # Custom is wildcard: *.domain.com — check if system covers the base domain
+                            $customSuffix = $Matches[1]
+                            if ($sysFqdn -eq $customSuffix -or $sysFqdn -eq "*.$customSuffix") { $isMatch = $true; $matchType = 'Wildcard' }
+                        }
 
-                    if ($isMatch) {
-                        $matchedPairs.Add([PSCustomObject]@{
-                            CustomFqdn = $destination
-                            SystemFqdn = $systemFqdns[$i]
-                            MatchType  = $matchType
-                            DestType   = if ($destinationTypeMap.ContainsKey($destination)) { $destinationTypeMap[$destination] } else { 'FQDN' }
-                        })
-                        break  # move to next destination once a system match is found for this one
+                        if ($isMatch) {
+                            $matchedPairs.Add([PSCustomObject]@{
+                                CustomFqdn = $destination
+                                SystemFqdn = $systemFqdns[$i]
+                                MatchType  = $matchType
+                                DestType   = 'FQDN'
+                            })
+                            break  # move to next destination once a system match is found for this one
+                        }
                     }
                 }
             }
@@ -231,37 +254,78 @@ function Test-Assessment-27004 {
         $totalRedundantDestinations = ($allBypassRules | ForEach-Object { $_.RedundantCount } | Measure-Object -Sum).Sum
         $totalUniqueDestinations = $totalDestinations - $totalRedundantDestinations
 
-        # Build rule-level summary table
-        $rulesTable = "#### Rule-Level Summary`n`n"
+        # Sort rules per spec: Status priority (Redundant → Partial → No Overlap), then by descending redundant count
+        $statusPriority = @{ 'Redundant' = 1; 'Partial' = 2; 'No Overlap' = 3 }
+        $sortedRules = $allBypassRules | Sort-Object { $statusPriority[$_.Status] }, @{ Expression = { $_.RedundantCount }; Descending = $true }
+
+        # Build rule-level summary table with 10-row cap
+        $rulesTable = "#### Rule-level summary`n`n"
         $rulesTable += "| Policy name | Rule name | Total destinations | Redundant destinations | Status |`n"
         $rulesTable += "| :---------- | :-------- | :----------------- | :--------------------- | :----- |`n"
 
-        foreach ($rule in $allBypassRules) {
+        $maxRulesDisplayed = 10
+        $displayedRules = $sortedRules | Select-Object -First $maxRulesDisplayed
+
+        foreach ($rule in $displayedRules) {
             $policyName = Get-SafeMarkdown -Text $rule.PolicyName
             $ruleName = Get-SafeMarkdown -Text $rule.RuleName
             $rulesTable += "| $policyName | $ruleName | $($rule.TotalDestinations) | $($rule.RedundantCount) | $($rule.Status) |`n"
         }
 
+        # Add overflow summary if there are more than 10 rules
+        if ($sortedRules.Count -gt $maxRulesDisplayed) {
+            $remaining = $sortedRules | Select-Object -Skip $maxRulesDisplayed
+            $remainingCount = $remaining.Count
+            $remainingRedundant = ($remaining | Where-Object { $_.Status -eq 'Redundant' }).Count
+            $remainingPartial = ($remaining | Where-Object { $_.Status -eq 'Partial' }).Count
+            $remainingNoOverlap = ($remaining | Where-Object { $_.Status -eq 'No Overlap' }).Count
+            $rulesTable += "| *+ $remainingCount more rules not shown ($remainingRedundant redundant, $remainingPartial partial, $remainingNoOverlap no overlap)* | | | | |`n"
+        }
+
         # Build redundant destination detail grouped by rule
         $redundantDetail = ''
         if ($redundantRules.Count -gt 0) {
-            $redundantDetail = "#### Redundant Destination Detail`n`n"
+            $redundantDetail = "#### Redundant destination detail`n`n"
 
-            foreach ($rule in $redundantRules) {
+            # Sort redundant rules by same criteria: Status priority then redundant count desc
+            $sortedRedundantRules = $redundantRules | Sort-Object { $statusPriority[$_.Status] }, @{ Expression = { $_.RedundantCount }; Descending = $true }
+
+            # Cap at 10 rule groups
+            $maxRuleGroups = 10
+            $displayedRuleGroups = $sortedRedundantRules | Select-Object -First $maxRuleGroups
+
+            foreach ($rule in $displayedRuleGroups) {
                 $policyName = Get-SafeMarkdown -Text $rule.PolicyName
                 $ruleName = Get-SafeMarkdown -Text $rule.RuleName
                 $redundantDetail += "**Rule: $ruleName** (Policy: $policyName) — $($rule.RedundantCount) of $($rule.TotalDestinations) destinations redundant`n`n"
                 $redundantDetail += "| # | Custom bypass destination | Destination type | Matched system bypass entry | Match type |`n"
                 $redundantDetail += "| :- | :----------------------- | :--------------- | :-------------------------- | :--------- |`n"
 
+                # Cap at 10 destination entries per rule group
+                $maxDestinationsPerRule = 10
+                $displayedPairs = $rule.MatchedPairs | Select-Object -First $maxDestinationsPerRule
+
                 $rowNum = 1
-                foreach ($pair in $rule.MatchedPairs) {
+                foreach ($pair in $displayedPairs) {
                     $customDest = Get-SafeMarkdown -Text $pair.CustomFqdn
                     $sysDest = Get-SafeMarkdown -Text $pair.SystemFqdn
                     $redundantDetail += "| $rowNum | $customDest | $($pair.DestType) | $sysDest | $($pair.MatchType) |`n"
                     $rowNum++
                 }
+
+                # Add overflow row if this rule has more than 10 redundant destinations
+                if ($rule.MatchedPairs.Count -gt $maxDestinationsPerRule) {
+                    $remainingPairs = $rule.MatchedPairs.Count - $maxDestinationsPerRule
+                    $redundantDetail += "| | *+ $remainingPairs more redundant destinations not shown for this rule* | | | |`n"
+                }
+
                 $redundantDetail += "`n"
+            }
+
+            # Add overflow line if there are more than 10 rule groups
+            if ($sortedRedundantRules.Count -gt $maxRuleGroups) {
+                $remainingRuleGroups = $sortedRedundantRules.Count - $maxRuleGroups
+                $redundantDetail += "*+ $remainingRuleGroups more rules with redundant destinations not shown*`n`n"
             }
         }
 
