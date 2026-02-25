@@ -35,6 +35,11 @@ function Test-Assessment-27004 {
     [CmdletBinding()]
     param()
 
+    # Constants for output display limits
+    [int]$MAX_RULES_DISPLAYED = 10
+    [int]$MAX_RULE_GROUPS = 10
+    [int]$MAX_DESTINATIONS_PER_RULE = 10
+
     #region Data Collection
     Write-PSFMessage '🟦 Start' -Tag Test -Level VeryVerbose
 
@@ -51,10 +56,17 @@ function Test-Assessment-27004 {
         return
     }
 
-    $bypassConfig = Get-Content $dataFilePath -Raw | ConvertFrom-Json
-    $systemFqdns = @($bypassConfig.fqdns)
-    $systemFqdnsLower = $systemFqdns | ForEach-Object { $_.ToLower() }
-    Write-PSFMessage "Loaded $($systemFqdns.Count) system bypass FQDNs from config (last updated: $($bypassConfig.metadata.lastUpdated))" -Tag Test -Level VeryVerbose
+    $jsonErrorMsg = $null
+    try {
+        $bypassConfig = Get-Content $dataFilePath -Raw | ConvertFrom-Json
+        $systemFqdns = @($bypassConfig.fqdns)
+        $systemFqdnsLower = $systemFqdns | ForEach-Object { $_.ToLower() }
+        Write-PSFMessage "Loaded $($systemFqdns.Count) system bypass FQDNs from config (last updated: $($bypassConfig.metadata.lastUpdated))" -Tag Test -Level VeryVerbose
+    }
+    catch {
+        $jsonErrorMsg = $_
+        Write-PSFMessage "Failed to parse system bypass config file: $jsonErrorMsg" -Tag Test -Level Warning
+    }
 
     # System recommended bypass categories (from priority 65000 rule)
     $systemCategories = @('Education', 'Finance', 'Government', 'HealthAndMedicine')
@@ -82,7 +94,13 @@ function Test-Assessment-27004 {
     $passed = $false
     $customStatus = $null
 
-    if ($errorMsg) {
+    if ($jsonErrorMsg) {
+        # JSON parsing failed - unable to load system bypass configuration
+        $passed = $false
+        $customStatus = 'Investigate'
+        $testResultMarkdown = "⚠️ Unable to load system bypass configuration due to JSON parsing error.`n`n%TestResult%"
+    }
+    elseif ($errorMsg) {
         # API call failed - unable to determine status
         $passed = $false
         $customStatus = 'Investigate'
@@ -100,7 +118,6 @@ function Test-Assessment-27004 {
 
     $allBypassRules = [System.Collections.Generic.List[object]]::new()
     $redundantRules = [System.Collections.Generic.List[object]]::new()
-    $uniqueRules = [System.Collections.Generic.List[object]]::new()
 
     foreach ($policy in $tlsPolicies) {
         if ($null -eq $policy.policyRules) {
@@ -132,6 +149,11 @@ function Test-Assessment-27004 {
                         }
                     }
                 }
+            }
+
+            # Skip rule if no destinations found
+            if ($destinations.Count -eq 0) {
+                continue
             }
 
             # Check each destination FQDN against the system bypass FQDN list.
@@ -180,12 +202,15 @@ function Test-Assessment-27004 {
                             # Standard wildcard: *.domain.com
                             $suffix = $Matches[1]
                             if ($destLower -like "*.$suffix" -or $destLower -eq $suffix) { $isMatch = $true; $matchType = 'Subdomain' }
-                            elseif ($destLower -eq "*.$suffix") { $isMatch = $true; $matchType = 'Wildcard' }
+                            elseif ($destLower -eq "*.$suffix") { $isMatch = $true; $matchType = 'Exact' }
                         }
-                        elseif ($destLower -match '^\*\.(.+)$') {
-                            # Custom is wildcard: *.domain.com — check if system covers the base domain
+
+                        # Check if custom destination is a wildcard being covered by system base domain
+                        if (-not $isMatch -and $destLower -match '^\*\.(.+)$') {
                             $customSuffix = $Matches[1]
-                            if ($sysFqdn -eq $customSuffix -or $sysFqdn -eq "*.$customSuffix") { $isMatch = $true; $matchType = 'Wildcard' }
+                            if ($sysFqdn -eq $customSuffix -or $sysFqdn -eq "*.$customSuffix") {
+                                $isMatch = $true; $matchType = 'Wildcard'
+                            }
                         }
 
                         if ($isMatch) {
@@ -195,7 +220,7 @@ function Test-Assessment-27004 {
                                 MatchType  = $matchType
                                 DestType   = 'FQDN'
                             })
-                            break  # move to next destination once a system match is found for this one
+                            break  # Only match once per destination
                         }
                     }
                 }
@@ -222,22 +247,19 @@ function Test-Assessment-27004 {
             if ($ruleStatus -ne 'No Overlap') {
                 $redundantRules.Add($ruleInfo)
             }
-            else {
-                $uniqueRules.Add($ruleInfo)
-            }
         }
     }
 
-    # Evaluate test result per spec evaluation logic
-    if ($redundantRules.Count -eq 0) {
-        # No custom bypass rules OR custom rules exist but none are redundant - pass
-        $passed = $true
-        $testResultMarkdown = "✅ All custom TLS inspection bypass rules target unique destinations not covered by the system bypass list.`n`n%TestResult%"
-    }
-    else {
-        # Any matches found - fail with list of redundant rules
-        $passed = $false
-        $testResultMarkdown = "❌ Found custom bypass rules that duplicate system bypass destinations; these rules are redundant and can be removed to simplify policy management.`n`n%TestResult%"
+        # Evaluate test result per spec evaluation logic
+        if ($redundantRules.Count -eq 0) {
+            # No custom bypass rules OR custom rules exist but none are redundant - pass
+            $passed = $true
+            $testResultMarkdown = "✅ All custom TLS inspection bypass rules target unique destinations not covered by the system bypass list.`n`n%TestResult%"
+        }
+        else {
+            # Any matches found - fail with list of redundant rules
+            $passed = $false
+            $testResultMarkdown = "❌ Found custom bypass rules that duplicate system bypass destinations; these rules are redundant and can be removed to simplify policy management.`n`n%TestResult%"
         }
     }
     #endregion Assessment Logic
@@ -258,13 +280,12 @@ function Test-Assessment-27004 {
         $statusPriority = @{ 'Redundant' = 1; 'Partial' = 2; 'No Overlap' = 3 }
         $sortedRules = $allBypassRules | Sort-Object { $statusPriority[$_.Status] }, @{ Expression = { $_.RedundantCount }; Descending = $true }
 
-        # Build rule-level summary table with 10-row cap
+        # Build rule-level summary table with row cap
         $rulesTable = "#### Rule-level summary`n`n"
         $rulesTable += "| Policy name | Rule name | Total destinations | Redundant destinations | Status |`n"
         $rulesTable += "| :---------- | :-------- | :----------------- | :--------------------- | :----- |`n"
 
-        $maxRulesDisplayed = 10
-        $displayedRules = $sortedRules | Select-Object -First $maxRulesDisplayed
+        $displayedRules = $sortedRules | Select-Object -First $MAX_RULES_DISPLAYED
 
         foreach ($rule in $displayedRules) {
             $policyName = Get-SafeMarkdown -Text $rule.PolicyName
@@ -272,9 +293,9 @@ function Test-Assessment-27004 {
             $rulesTable += "| $policyName | $ruleName | $($rule.TotalDestinations) | $($rule.RedundantCount) | $($rule.Status) |`n"
         }
 
-        # Add overflow summary if there are more than 10 rules
-        if ($sortedRules.Count -gt $maxRulesDisplayed) {
-            $remaining = $sortedRules | Select-Object -Skip $maxRulesDisplayed
+        # Add overflow summary if there are more rules than the display limit
+        if ($sortedRules.Count -gt $MAX_RULES_DISPLAYED) {
+            $remaining = $sortedRules | Select-Object -Skip $MAX_RULES_DISPLAYED
             $remainingCount = $remaining.Count
             $remainingRedundant = ($remaining | Where-Object { $_.Status -eq 'Redundant' }).Count
             $remainingPartial = ($remaining | Where-Object { $_.Status -eq 'Partial' }).Count
@@ -290,9 +311,8 @@ function Test-Assessment-27004 {
             # Sort redundant rules by same criteria: Status priority then redundant count desc
             $sortedRedundantRules = $redundantRules | Sort-Object { $statusPriority[$_.Status] }, @{ Expression = { $_.RedundantCount }; Descending = $true }
 
-            # Cap at 10 rule groups
-            $maxRuleGroups = 10
-            $displayedRuleGroups = $sortedRedundantRules | Select-Object -First $maxRuleGroups
+            # Cap at maximum rule groups
+            $displayedRuleGroups = $sortedRedundantRules | Select-Object -First $MAX_RULE_GROUPS
 
             foreach ($rule in $displayedRuleGroups) {
                 $policyName = Get-SafeMarkdown -Text $rule.PolicyName
@@ -301,9 +321,8 @@ function Test-Assessment-27004 {
                 $redundantDetail += "| # | Custom bypass destination | Destination type | Matched system bypass entry | Match type |`n"
                 $redundantDetail += "| :- | :----------------------- | :--------------- | :-------------------------- | :--------- |`n"
 
-                # Cap at 10 destination entries per rule group
-                $maxDestinationsPerRule = 10
-                $displayedPairs = $rule.MatchedPairs | Select-Object -First $maxDestinationsPerRule
+                # Cap at maximum destination entries per rule group
+                $displayedPairs = $rule.MatchedPairs | Select-Object -First $MAX_DESTINATIONS_PER_RULE
 
                 $rowNum = 1
                 foreach ($pair in $displayedPairs) {
@@ -313,18 +332,18 @@ function Test-Assessment-27004 {
                     $rowNum++
                 }
 
-                # Add overflow row if this rule has more than 10 redundant destinations
-                if ($rule.MatchedPairs.Count -gt $maxDestinationsPerRule) {
-                    $remainingPairs = $rule.MatchedPairs.Count - $maxDestinationsPerRule
+                # Add overflow row if this rule has more redundant destinations than display limit
+                if ($rule.MatchedPairs.Count -gt $MAX_DESTINATIONS_PER_RULE) {
+                    $remainingPairs = $rule.MatchedPairs.Count - $MAX_DESTINATIONS_PER_RULE
                     $redundantDetail += "| | *+ $remainingPairs more redundant destinations not shown for this rule* | | | |`n"
                 }
 
                 $redundantDetail += "`n"
             }
 
-            # Add overflow line if there are more than 10 rule groups
-            if ($sortedRedundantRules.Count -gt $maxRuleGroups) {
-                $remainingRuleGroups = $sortedRedundantRules.Count - $maxRuleGroups
+            # Add overflow line if there are more rule groups than display limit
+            if ($sortedRedundantRules.Count -gt $MAX_RULE_GROUPS) {
+                $remainingRuleGroups = $sortedRedundantRules.Count - $MAX_RULE_GROUPS
                 $redundantDetail += "*+ $remainingRuleGroups more rules with redundant destinations not shown*`n`n"
             }
         }
