@@ -112,22 +112,19 @@ function Test-Assessment-27004 {
             }
 
             $destinations = @()
-            $destinationTypes = @()
-            $isRedundant = $false
+            $destinationTypeMap = @{}
             $matchedPairs = [System.Collections.Generic.List[object]]::new()
 
-            # Extract destinations from matchingConditions
+            # Extract destinations from matchingConditions, tracking type per value
             if ($null -ne $rule.matchingConditions -and $null -ne $rule.matchingConditions.destinations) {
                 foreach ($dest in $rule.matchingConditions.destinations) {
                     if ($null -ne $dest.values) {
-                        $destinations += $dest.values
-
-                        # Determine destination type from @odata.type
-                        if ($dest.'@odata.type' -like '*tlsInspectionFqdnDestination*') {
-                            $destinationTypes += 'FQDN'
-                        }
-                        elseif ($dest.'@odata.type' -like '*tlsInspectionWebCategoryDestination*') {
-                            $destinationTypes += 'Category'
+                        $destType = if ($dest.'@odata.type' -like '*tlsInspectionFqdnDestination*') { 'FQDN' }
+                                    elseif ($dest.'@odata.type' -like '*tlsInspectionWebCategoryDestination*') { 'Category' }
+                                    else { 'Unknown' }
+                        foreach ($v in $dest.values) {
+                            $destinations += $v
+                            $destinationTypeMap[$v] = $destType
                         }
                     }
                 }
@@ -146,63 +143,60 @@ function Test-Assessment-27004 {
                 for ($i = 0; $i -lt $systemFqdnsLower.Count; $i++) {
                     $sysFqdn = $systemFqdnsLower[$i]
                     $isMatch = $false
+                    $matchType = ''
 
                     if ($destLower -eq $sysFqdn) {
                         # Exact match (covers wildcard-to-wildcard too)
-                        $isMatch = $true
+                        $isMatch = $true; $matchType = 'Exact'
                     }
                     elseif ($sysFqdn -match '^\*\.([^.]+)\.\*$') {
                         # Double-wildcard: *.domain.* — match any FQDN containing 'domain' as a segment
                         $mid = [regex]::Escape($Matches[1])
-                        if ($destLower -match "(^|\.)$mid\.") { $isMatch = $true }
+                        if ($destLower -match "(^|\.)$mid\.") { $isMatch = $true; $matchType = 'Wildcard' }
                     }
                     elseif ($sysFqdn -match '^\*\.(.+)$') {
                         # Standard wildcard: *.domain.com
                         $suffix = $Matches[1]
-                        # Subdomain or root domain both considered redundant
-                        if ($destLower -like "*.$suffix" -or $destLower -eq $suffix) { $isMatch = $true }
-                        # Custom wildcard for the same domain: *.domain.com
-                        elseif ($destLower -eq "*.$suffix") { $isMatch = $true }
+                        if ($destLower -like "*.$suffix" -or $destLower -eq $suffix) { $isMatch = $true; $matchType = 'Subdomain' }
+                        elseif ($destLower -eq "*.$suffix") { $isMatch = $true; $matchType = 'Wildcard' }
                     }
                     elseif ($destLower -match '^\*\.(.+)$') {
                         # Custom is wildcard: *.domain.com — check if system covers the base domain
                         $customSuffix = $Matches[1]
-                        if ($sysFqdn -eq $customSuffix -or $sysFqdn -eq "*.$customSuffix") { $isMatch = $true }
+                        if ($sysFqdn -eq $customSuffix -or $sysFqdn -eq "*.$customSuffix") { $isMatch = $true; $matchType = 'Wildcard' }
                     }
 
                     if ($isMatch) {
                         $matchedPairs.Add([PSCustomObject]@{
                             CustomFqdn = $destination
                             SystemFqdn = $systemFqdns[$i]
+                            MatchType  = $matchType
+                            DestType   = if ($destinationTypeMap.ContainsKey($destination)) { $destinationTypeMap[$destination] } else { 'FQDN' }
                         })
                         break  # move to next destination once a system match is found for this one
                     }
                 }
             }
 
-            $isRedundant = $matchedPairs.Count -gt 0
+            $ruleStatus = if ($matchedPairs.Count -eq 0) { 'No Overlap' }
+                          elseif ($matchedPairs.Count -ge $destinations.Count) { 'Redundant' }
+                          else { 'Partial' }
 
             $ruleInfo = [PSCustomObject]@{
-                PolicyName          = $policy.name
-                PolicyId            = $policy.id
-                RuleName            = $rule.name
-                RuleId              = $rule.id
-                DestinationType     = if ($destinationTypes.Count -gt 0) {
-                    ($destinationTypes | Select-Object -Unique) -join ' / '
-                } else { 'None' }
-                Destinations        = $destinations
-                DestinationSummary  = if ($destinations.Count -gt 0) {
-                    $first5 = ($destinations | Select-Object -First 5) -join ', '
-                    if ($destinations.Count -gt 5) { "$first5 (+$($destinations.Count - 5) more)" } else { $first5 }
-                } else { 'None' }
-                IsRedundant         = $isRedundant
-                MatchedPairs        = $matchedPairs
-                Status              = if ($isRedundant) { 'Redundant' } else { 'Unique' }
+                PolicyName        = $policy.name
+                PolicyId          = $policy.id
+                RuleName          = $rule.name
+                RuleId            = $rule.id
+                Destinations      = $destinations
+                TotalDestinations = $destinations.Count
+                RedundantCount    = $matchedPairs.Count
+                MatchedPairs      = $matchedPairs
+                Status            = $ruleStatus
             }
 
             $allBypassRules.Add($ruleInfo)
 
-            if ($isRedundant) {
+            if ($ruleStatus -ne 'No Overlap') {
                 $redundantRules.Add($ruleInfo)
             }
             else {
@@ -229,60 +223,64 @@ function Test-Assessment-27004 {
     $mdInfo = ''
 
     if ($allBypassRules.Count -gt 0) {
-        $reportTitle = 'TLS Inspection Bypass Rules'
+        $reportTitle = 'TLS Inspection Bypass Rule Analysis'
         $portalLink = 'https://entra.microsoft.com/#view/Microsoft_Azure_Network_Access/TLSInspectionPolicy.ReactView'
+
+        # Calculate totals
+        $totalDestinations = ($allBypassRules | ForEach-Object { $_.TotalDestinations } | Measure-Object -Sum).Sum
+        $totalRedundantDestinations = ($allBypassRules | ForEach-Object { $_.RedundantCount } | Measure-Object -Sum).Sum
+        $totalUniqueDestinations = $totalDestinations - $totalRedundantDestinations
+
+        # Build rule-level summary table
+        $rulesTable = "#### Rule-Level Summary`n`n"
+        $rulesTable += "| Policy name | Rule name | Total destinations | Redundant destinations | Status |`n"
+        $rulesTable += "| :---------- | :-------- | :----------------- | :--------------------- | :----- |`n"
+
+        foreach ($rule in $allBypassRules) {
+            $policyName = Get-SafeMarkdown -Text $rule.PolicyName
+            $ruleName = Get-SafeMarkdown -Text $rule.RuleName
+            $rulesTable += "| $policyName | $ruleName | $($rule.TotalDestinations) | $($rule.RedundantCount) | $($rule.Status) |`n"
+        }
+
+        # Build redundant destination detail grouped by rule
+        $redundantDetail = ''
+        if ($redundantRules.Count -gt 0) {
+            $redundantDetail = "#### Redundant Destination Detail`n`n"
+
+            foreach ($rule in $redundantRules) {
+                $policyName = Get-SafeMarkdown -Text $rule.PolicyName
+                $ruleName = Get-SafeMarkdown -Text $rule.RuleName
+                $redundantDetail += "**Rule: $ruleName** (Policy: $policyName) — $($rule.RedundantCount) of $($rule.TotalDestinations) destinations redundant`n`n"
+                $redundantDetail += "| # | Custom bypass destination | Destination type | Matched system bypass entry | Match type |`n"
+                $redundantDetail += "| :- | :----------------------- | :--------------- | :-------------------------- | :--------- |`n"
+
+                $rowNum = 1
+                foreach ($pair in $rule.MatchedPairs) {
+                    $customDest = Get-SafeMarkdown -Text $pair.CustomFqdn
+                    $sysDest = Get-SafeMarkdown -Text $pair.SystemFqdn
+                    $redundantDetail += "| $rowNum | $customDest | $($pair.DestType) | $sysDest | $($pair.MatchType) |`n"
+                    $rowNum++
+                }
+                $redundantDetail += "`n"
+            }
+        }
 
         $formatTemplate = @'
 
 ## [{0}]({1})
 
-{5}
-
-**Summary:**
+**Overview:**
 - Total custom bypass rules: {2}
-- Total custom bypass destinations: {7}
-- Redundant destinations found: {3}
-- Unique destinations: {4}
+- Total custom bypass destinations: {3}
+- Redundant destinations found: {4}
+- Unique destinations: {5}
 
 {6}
+
+{7}
 '@
 
-        # Build main rules table
-        $rulesTable = "**All custom bypass rules:**`n`n"
-        $rulesTable += "| Policy name | Rule name | Destination type | Destination value | System bypass match | Status |`n"
-        $rulesTable += "| :---------- | :-------- | :--------------- | :---------------- | :------------------ | :----- |`n"
-
-        foreach ($rule in $allBypassRules) {
-            $policyName = Get-SafeMarkdown -Text $rule.PolicyName
-            $ruleName = Get-SafeMarkdown -Text $rule.RuleName
-            $destType = Get-SafeMarkdown -Text $rule.DestinationType
-            $destValue = Get-SafeMarkdown -Text $rule.DestinationSummary
-            $systemMatch = if ($rule.IsRedundant) { 'Yes' } else { 'No' }
-            $statusIcon = if ($rule.IsRedundant) { 'Redundant' } else { 'Unique' }
-
-            $rulesTable += "| $policyName | $ruleName | $destType | $destValue | $systemMatch | $statusIcon |`n"
-        }
-
-        # Build redundant rules detail table if any found
-        $redundantTable = ''
-        if ($redundantRules.Count -gt 0) {
-            $redundantTable = "`n**Redundant rules detail:**`n`n"
-            $redundantTable += "| Policy name | Rule name | Redundant destination | Matched system bypass |`n"
-            $redundantTable += "| :---------- | :-------- | :-------------------- | :-------------------- |`n"
-
-            foreach ($rule in $redundantRules) {
-                $policyName = Get-SafeMarkdown -Text $rule.PolicyName
-                $ruleName = Get-SafeMarkdown -Text $rule.RuleName
-                $redundantDests = ($rule.MatchedPairs | ForEach-Object { Get-SafeMarkdown -Text $_.CustomFqdn }) -join ', '
-                $matchedBypasses = ($rule.MatchedPairs | ForEach-Object { Get-SafeMarkdown -Text $_.SystemFqdn }) -join ', '
-                $redundantTable += "| $policyName | $ruleName | $redundantDests | $matchedBypasses |`n"
-            }
-        }
-
-        # Calculate total destinations across all bypass rules
-        $totalDestinations = ($allBypassRules | ForEach-Object { $_.Destinations.Count } | Measure-Object -Sum).Sum
-
-        $mdInfo = $formatTemplate -f $reportTitle, $portalLink, $allBypassRules.Count, $redundantRules.Count, $uniqueRules.Count, $rulesTable, $redundantTable, $totalDestinations
+        $mdInfo = $formatTemplate -f $reportTitle, $portalLink, $allBypassRules.Count, $totalDestinations, $totalRedundantDestinations, $totalUniqueDestinations, $rulesTable, $redundantDetail
     }
 
     $testResultMarkdown = $testResultMarkdown -replace '%TestResult%', $mdInfo
