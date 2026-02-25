@@ -12,7 +12,7 @@
     Required APIs:
         - Microsoft Graph beta: networkAccess/tlsInspectionPolicies (prerequisite check)
         - Azure Monitor diagnostic settings: providers/microsoft.aadiam/diagnosticsettings
-        - Log Analytics query: {workspaceResourceId}/api/query
+        - Log Analytics query: {workspaceResourceId}/query
 #>
 
 function Test-Assessment-27003 {
@@ -42,7 +42,7 @@ function Test-Assessment-27003 {
         )
 
         $body = @{ query = $Query } | ConvertTo-Json
-        $response = Invoke-AzRestMethod -Method POST -Uri $Uri -Payload $body -ErrorAction Stop
+        $response = Invoke-ZtAzureRequest -Uri $Uri -Method POST -Payload $body -FullResponse
 
         if ($response.StatusCode -ge 400) {
             try {
@@ -63,7 +63,7 @@ function Test-Assessment-27003 {
         foreach ($row in $table.Rows) {
             $obj = [ordered]@{}
             for ($i = 0; $i -lt $table.Columns.Count; $i++) {
-                $obj[$table.Columns[$i].ColumnName] = $row[$i]
+                $obj[$table.Columns[$i].Name] = $row[$i]
             }
             $results += [PSCustomObject]$obj
         }
@@ -124,7 +124,7 @@ function Test-Assessment-27003 {
     $diagnosticSettingsUri = $resourceManagementUrl + 'providers/microsoft.aadiam/diagnosticsettings?api-version=2017-04-01-preview'
 
     try {
-        $diagResult = Invoke-AzRestMethod -Method GET -Uri $diagnosticSettingsUri -ErrorAction Stop
+        $diagResult = Invoke-ZtAzureRequest -Uri $diagnosticSettingsUri -FullResponse
 
         if ($diagResult.StatusCode -eq 403) {
             Write-PSFMessage 'The signed-in user does not have access to check diagnostic settings.' -Level Verbose
@@ -166,7 +166,7 @@ function Test-Assessment-27003 {
 
     Write-PSFMessage "Using workspace from diagnostic setting '$matchedSettingName': $workspaceResourceId" -Tag Test -Level VeryVerbose
 
-    $logAnalyticsQueryUri = "${resourceManagementUrl}$($workspaceResourceId.TrimStart('/'))/api/query?api-version=2020-08-01"
+    $logAnalyticsQueryUri = "${resourceManagementUrl}$($workspaceResourceId.TrimStart('/'))/query?api-version=2017-10-01"
 
     # Q1: Calculate TLS inspection failure rate over the last 7 days
     Write-ZtProgress -Activity $activity -Status 'Querying TLS inspection failure rate (last 7 days)'
