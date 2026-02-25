@@ -20,16 +20,18 @@ function Test-Assessment-25398 {
         UserImpact = 'Low'
     )]
     [CmdletBinding()]
-    param()
+    param(
+        $Database
+    )
 
     Write-PSFMessage '🟦 Start Global Secure Access DC RDP protection evaluation' -Tag Test -Level VeryVerbose
 
     $activity = 'Checking domain controller RDP access protection'
     Write-ZtProgress -Activity $activity -Status 'Checking Microsoft Graph connection'
 
-    #region Data Collection
+    #region Helper Functions
 
-    # Helper: Check if a specific port is included in a list of port values (discrete or range)
+    # Check if a specific port is included in a list of port values (discrete or range)
     function Test-PortIncluded {
         param([string[]]$Ports, [int]$TargetPort)
         foreach ($portValue in $Ports) {
@@ -39,14 +41,40 @@ function Test-Assessment-25398 {
         return $false
     }
 
+    #endregion Helper Functions
+
+    #region Data Collection
+
     # Q1: Get all Private Access apps
     Write-ZtProgress -Activity $activity -Status 'Retrieving Private Access applications'
 
-    $privateAccessApps = Invoke-ZtGraphRequest -RelativeUri 'applications' -QueryParameters @{
-        '$filter' = "tags/any(t:t eq 'PrivateAccessNonWebApplication')"
-        '$count' = 'true'
-        '$select' = 'id,appId,displayName,tags'
-    } -ConsistencyLevel 'eventual'
+    $privateAccessApps = $null
+
+    if ($Database) {
+        Write-PSFMessage 'Querying local database for Private Access applications' -Tag Test -Level VeryVerbose
+        try {
+            $sql = @"
+SELECT id, appId, displayName
+FROM Application
+WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
+"@
+            $privateAccessApps = @(Invoke-DatabaseQuery -Database $Database -Sql $sql -AsCustomObject)
+            Write-PSFMessage "Found $($privateAccessApps.Count) Private Access application(s) from local database" -Tag Test -Level VeryVerbose
+        }
+        catch {
+            Write-PSFMessage "Local database query failed, falling back to Graph API: $_" -Tag Test -Level Warning
+            $privateAccessApps = $null
+        }
+    }
+
+    if (-not $privateAccessApps) {
+        Write-PSFMessage 'Retrieving Private Access applications from Graph API' -Tag Test -Level VeryVerbose
+        $privateAccessApps = Invoke-ZtGraphRequest -RelativeUri 'applications' -QueryParameters @{
+            '$filter' = "tags/any(t:t eq 'PrivateAccessNonWebApplication')"
+            '$count' = 'true'
+            '$select' = 'id,appId,displayName'
+        } -ConsistencyLevel 'eventual'
+    }
 
     if (-not $privateAccessApps) {
         Write-PSFMessage "No Private Access applications found." -Tag Test -Level VeryVerbose
