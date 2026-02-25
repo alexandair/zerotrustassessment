@@ -348,18 +348,28 @@ resources
                 $allDestinationTypes += $destTypes
 
                 # Collect enabled log categories for this single setting
+                # Also detect allLogs/audit category groups which cover all required categories
                 $settingEnabledCategories = @()
+                $hasAllLogsGroup = $false
                 foreach ($log in $setting.properties.logs) {
                     if ($log.enabled) {
+                        if ($log.categoryGroup -in @('allLogs', 'audit')) {
+                            $hasAllLogsGroup = $true
+                        }
                         $categoryName = if ($log.category) { $log.category } else { $log.categoryGroup }
                         if ($categoryName) { $settingEnabledCategories += $categoryName }
                     }
                 }
 
-                # Per spec: a single setting must cover all three required categories
-                $missingInThisSetting = $requiredLogCategories | Where-Object { $_ -notin $settingEnabledCategories }
-                if ($missingInThisSetting.Count -eq 0) {
+                # Per spec: a single setting must cover all three required categories.
+                # allLogs/audit category groups implicitly cover all required categories.
+                if ($hasAllLogsGroup) {
                     $hasValidDiagSetting = $true
+                } else {
+                    $missingInThisSetting = @($requiredLogCategories | Where-Object { $_ -notin $settingEnabledCategories })
+                    if ($missingInThisSetting.Count -eq 0) {
+                        $hasValidDiagSetting = $true
+                    }
                 }
             }
         }
@@ -374,10 +384,15 @@ resources
         $destinationType = if ($allDestinationTypes.Count -gt 0) { $allDestinationTypes -join ', ' } else { 'None' }
 
         # Collect all enabled categories across all settings (for display/table purposes only)
+        # Also detect allLogs/audit category groups which cover all required categories
         $allEnabledCategories = @()
+        $anyAllLogsGroup = $false
         foreach ($setting in $diagSettings) {
             foreach ($log in $setting.properties.logs) {
                 if ($log.enabled) {
+                    if ($log.categoryGroup -in @('allLogs', 'audit')) {
+                        $anyAllLogsGroup = $true
+                    }
                     $categoryName = if ($log.category) { $log.category } else { $log.categoryGroup }
                     if ($categoryName) { $allEnabledCategories += $categoryName }
                 }
@@ -385,10 +400,11 @@ resources
         }
         $allEnabledCategories = $allEnabledCategories | Select-Object -Unique
 
-        # Determine enabled status for each required log category (for table display)
-        $notificationsEnabled = 'DDoSProtectionNotifications' -in $allEnabledCategories
-        $flowLogsEnabled = 'DDoSMitigationFlowLogs' -in $allEnabledCategories
-        $reportsEnabled = 'DDoSMitigationReports' -in $allEnabledCategories
+        # Determine enabled status for each required log category (for table display).
+        # If allLogs/audit is present in any setting, all categories are implicitly covered.
+        $notificationsEnabled = $anyAllLogsGroup -or ('DDoSProtectionNotifications' -in $allEnabledCategories)
+        $flowLogsEnabled = $anyAllLogsGroup -or ('DDoSMitigationFlowLogs' -in $allEnabledCategories)
+        $reportsEnabled = $anyAllLogsGroup -or ('DDoSMitigationReports' -in $allEnabledCategories)
 
         $evaluationResults += [PSCustomObject]@{
             SubscriptionId                = $pip.SubscriptionId
@@ -438,8 +454,8 @@ resources
     if ($evaluationResults.Count -gt 0) {
         $tableRows = ""
         $formatTemplate = @'
-| Subscription | Public IP name | Protection type | Associated VNET | Notifications | Flow logs | Reports | Destination | Status |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Public IP name | Resource ID | Protection type | Associated VNET | Diag. configured | Notifications | Flow logs | Reports | Destination | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 {0}
 
 '@
@@ -454,17 +470,18 @@ resources
         }
 
         foreach ($result in $displayResults) {
-            $subscriptionLink = "[$(Get-SafeMarkdown $result.SubscriptionName)]($portalSubscriptionBaseLink/$($result.SubscriptionId)/overview)"
             $pipLink = "[$(Get-SafeMarkdown $result.PublicIpName)]($portalResourceBaseLink$($result.PublicIpId)/diagnostics)"
+            $resourceId = Get-SafeMarkdown $result.PublicIpId
             $protectionType = $result.ProtectionType
             $associatedVnet = Get-SafeMarkdown $result.AssociatedVnet
+            $diagConfigured = if ($result.DiagnosticsConfigured) { 'Yes' } else { 'No' }
             $notificationsStatus = if ($result.DDoSProtectionNotifications) { '✅' } else { '❌' }
             $flowLogsStatus = if ($result.DDoSMitigationFlowLogs) { '✅' } else { '❌' }
             $reportsStatus = if ($result.DDoSMitigationReports) { '✅' } else { '❌' }
             $destConfigured = if ($result.DestinationType -eq 'None') { 'None' } else { $result.DestinationType }
             $statusText = if ($result.Status -eq 'Pass') { '✅ Pass' } else { '❌ Fail' }
 
-            $tableRows += "| $subscriptionLink | $pipLink | $protectionType | $associatedVnet | $notificationsStatus | $flowLogsStatus | $reportsStatus | $destConfigured | $statusText |`n"
+            $tableRows += "| $pipLink | $resourceId | $protectionType | $associatedVnet | $diagConfigured | $notificationsStatus | $flowLogsStatus | $reportsStatus | $destConfigured | $statusText |`n"
         }
 
         # Add note if more items exist
