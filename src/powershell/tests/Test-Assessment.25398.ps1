@@ -51,7 +51,7 @@ function Test-Assessment-25398 {
     $privateAccessApps = $null
 
     if ($Database) {
-        Write-PSFMessage 'Querying local database for Private Access applications' -Tag Test -Level VeryVerbose
+        Write-PSFMessage 'Querying database for Private Access applications' -Tag Test -Level VeryVerbose
         try {
             $sql = @"
 SELECT id, appId, displayName
@@ -62,7 +62,7 @@ WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
             Write-PSFMessage "Found $($privateAccessApps.Count) Private Access application(s) from local database" -Tag Test -Level VeryVerbose
         }
         catch {
-            Write-PSFMessage "Local database query failed, falling back to Graph API: $_" -Tag Test -Level Warning
+            Write-PSFMessage "Database query failed, falling back to Graph API: $_" -Tag Test -Level Warning
             $privateAccessApps = $null
         }
     }
