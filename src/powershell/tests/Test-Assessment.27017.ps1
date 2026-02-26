@@ -103,7 +103,7 @@ resources
         $testResultMarkdown = "✅ All Application Gateway WAF policies attached to Application Gateways are enabled in Prevention mode and have at least one JavaScript challenge rule configured and enabled.`n`n%TestResult%"
     }
     else {
-        $testResultMarkdown = "❌ One or more Application Gateway WAF policies attached to Application Gateways are disabled, running in Detection mode, have no JavaScript challenge rules configured, or have JavaScript challenge rules configured but all set to Disabled state.`n`n%TestResult%"
+        $testResultMarkdown = "❌ One or more Application Gateway WAF policies attached to Application Gateways are disabled, running in Detection mode, have no JavaScript challenge rules configured, or have JavaScript challenge rules configured but all set to Disabled state, leaving applications without browser verification against automated bots.`n`n%TestResult%"
     }
     #endregion Assessment Logic
 
