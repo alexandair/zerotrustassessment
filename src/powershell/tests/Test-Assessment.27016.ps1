@@ -102,7 +102,7 @@ resources
         $testResultMarkdown = "✅ All Application Gateway WAF policies attached to Application Gateways are enabled in Prevention mode and have at least one rate limiting rule configured and enabled.`n`n%TestResult%"
     }
     else {
-        $testResultMarkdown = "❌ One or more Application Gateway WAF policies are disabled, running in Detection mode, have no rate limiting rules configured, or have rate limiting rules configured but all set to Disabled state, leaving applications vulnerable to brute force and volumetric attacks.`n`n%TestResult%"
+        $testResultMarkdown = "❌ One or more Application Gateway WAF policies attached to Application Gateways are disabled, running in Detection mode, have no rate limiting rules configured, or have rate limiting rules configured but all set to Disabled state, leaving applications vulnerable to brute force and volumetric attacks.`n`n%TestResult%"
     }
     #endregion Assessment Logic
 
