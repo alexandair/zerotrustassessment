@@ -134,8 +134,8 @@ resources
 
 ## [{0}]({1})
 
-| Policy name | Subscription name | Policy state | Mode | Rate limit rules | Rule state | Status |
-| :---------- | :---------------- | :----------- | :--- | :--------------- | :--------- | :----- |
+| Policy name | Subscription name | Policy state | Mode | Rate limit rules count | Rule state | Status |
+| :---------- | :---------------- | :----------- | :--- | :--------------------- | :--------- | :----- |
 {2}
 
 '@
