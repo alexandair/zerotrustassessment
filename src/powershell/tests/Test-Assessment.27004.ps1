@@ -47,8 +47,6 @@ function Test-Assessment-27004 {
     Write-ZtProgress -Activity $activity -Status 'Loading system bypass reference list'
 
     # Load system bypass FQDN list from config file.
-    # The JSON is sourced from the GSA backend team because the API does not expose these FQDNs.
-    # Spec: 27004-system-bypass-fqdns.json must be kept up to date manually until an API is available.
     $dataFilePath = Join-Path $PSScriptRoot '..' 'assets' '27004-system-bypass-fqdns.json' | Resolve-Path -ErrorAction SilentlyContinue
     if (-not $dataFilePath -or -not (Test-Path $dataFilePath)) {
         Write-PSFMessage "System bypass FQDN config file not found: $dataFilePath" -Tag Test -Level Warning
@@ -156,13 +154,9 @@ function Test-Assessment-27004 {
                 continue
             }
 
-            # Check each destination FQDN against the system bypass FQDN list.
-            # Matching rules per spec:
-            #   Exact:              custom 'dropbox.com'       matches system 'dropbox.com'
-            #   Subdomain wildcard: custom 'www.dropbox.com'   matches system '*.dropbox.com'
-            #   Wildcard root:      custom 'dropbox.com'       matches system '*.dropbox.com'
-            #   Wildcard-wildcard:  custom '*.dropbox.com'     matches system '*.dropbox.com'
-            #   Double-wildcard:    custom 'x.britishairways.com' matches system '*.britishairways.*'
+            # Check each custom destination against the system bypass list.
+            # Supports exact matches, subdomain matches under wildcards (*.domain.com),
+            # wildcard-to-wildcard matches, and double-wildcard patterns (*.domain.*).
             foreach ($destination in $destinations) {
                 $destLower = $destination.ToLower().Trim()
                 $destType = if ($destinationTypeMap.ContainsKey($destination)) { $destinationTypeMap[$destination] } else { 'FQDN' }
@@ -194,9 +188,13 @@ function Test-Assessment-27004 {
                             $isMatch = $true; $matchType = 'Exact'
                         }
                         elseif ($sysFqdn -match '^\*\.([^.]+)\.\*$') {
-                            # Double-wildcard: *.domain.* — match any FQDN containing 'domain' as a segment
+                            # Double-wildcard: *.domain.* — check if custom destination matches the pattern
                             $mid = [regex]::Escape($Matches[1])
-                            if ($destLower -match "(^|\.)$mid\.") { $isMatch = $true; $matchType = 'Wildcard' }
+                            if ($destLower -match "\.$mid\.") {
+                                $isMatch = $true
+                                # Determine match type based on whether custom is also a wildcard
+                                $matchType = if ($destLower -match '^\*\.') { 'Wildcard' } else { 'Subdomain' }
+                            }
                         }
                         elseif ($sysFqdn -match '^\*\.(.+)$') {
                             # Standard wildcard: *.domain.com
@@ -326,9 +324,10 @@ function Test-Assessment-27004 {
 
                 $rowNum = 1
                 foreach ($pair in $displayedPairs) {
-                    $customDest = Get-SafeMarkdown -Text $pair.CustomFqdn
-                    $sysDest = Get-SafeMarkdown -Text $pair.SystemFqdn
-                    $redundantDetail += "| $rowNum | $customDest | $($pair.DestType) | $sysDest | $($pair.MatchType) |`n"
+                    # Escape asterisks in FQDNs for markdown rendering (prevent italic/bold interpretation)
+                    $customFqdn = $pair.CustomFqdn -replace '\*', '\*'
+                    $systemFqdn = $pair.SystemFqdn -replace '\*', '\*'
+                    $redundantDetail += "| $rowNum | $customFqdn | $($pair.DestType) | $systemFqdn | $($pair.MatchType) |`n"
                     $rowNum++
                 }
 
