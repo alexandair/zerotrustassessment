@@ -59,18 +59,18 @@ FROM Application
 WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
 "@
             $privateAccessApps = @(Invoke-DatabaseQuery -Database $Database -Sql $sql -AsCustomObject)
-            Write-PSFMessage "Found $($privateAccessApps.Count) Private Access application(s) from local database" -Tag Test -Level VeryVerbose
+            Write-PSFMessage "Found $($privateAccessApps.Count) Private Access application(s) from database" -Tag Test -Level VeryVerbose
         }
         catch {
-            Write-PSFMessage "Database query failed, falling back to Graph API: $_" -Tag Test -Level Warning
+            Write-PSFMessage "Database query failed: $_" -Tag Test -Level Warning
             $privateAccessApps = $null
         }
     }
 
 
     if (-not $privateAccessApps) {
-        Write-PSFMessage "No Private Access applications found." -Tag Test -Level VeryVerbose
-        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result "No Private Access applications configured in this tenant."
+        Write-PSFMessage 'No Private Access applications found' -Tag Test -Level VeryVerbose
+        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result 'No Private Access applications configured in this tenant.'
         return
     }
 
@@ -212,8 +212,8 @@ WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
     Write-PSFMessage "Found $($rdpApps.Count) RDP application(s)" -Tag Test -Level VeryVerbose
 
     if ($rdpApps.Count -eq 0) {
-        Write-PSFMessage "No RDP applications found" -Tag Test -Level VeryVerbose
-        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result "No Private Access applications with RDP access (port 3389) were found."
+        Write-PSFMessage 'No RDP applications found' -Tag Test -Level VeryVerbose
+        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result 'No Private Access applications with RDP access (port 3389) were found.'
         return
     }
 
@@ -225,8 +225,8 @@ WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
     } -ApiVersion beta
 
     if (-not $authStrength -or $authStrength.Count -eq 0) {
-        Write-PSFMessage "Phishing-resistant MFA authentication strength not found" -Tag Test -Level Warning
-        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result "Phishing-resistant MFA authentication strength policy not found."
+        Write-PSFMessage 'Phishing-resistant MFA authentication strength not found' -Tag Test -Level Warning
+        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result 'Phishing-resistant MFA authentication strength policy not found.'
         return
     }
 
