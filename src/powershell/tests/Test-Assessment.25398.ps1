@@ -70,7 +70,7 @@ WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
 
     if (-not $privateAccessApps) {
         Write-PSFMessage 'No Private Access applications found' -Tag Test -Level VeryVerbose
-        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result 'No Private Access applications configured in this tenant.'
+        Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'No Private Access applications configured in this tenant.'
         return
     }
 
@@ -213,7 +213,7 @@ WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
 
     if ($rdpApps.Count -eq 0) {
         Write-PSFMessage 'No RDP applications found' -Tag Test -Level VeryVerbose
-        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result 'No Private Access applications with RDP access (port 3389) were found.'
+        Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'No Private Access applications with RDP access (port 3389) were found.'
         return
     }
 
@@ -226,7 +226,7 @@ WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
 
     if (-not $authStrength -or $authStrength.Count -eq 0) {
         Write-PSFMessage 'Phishing-resistant MFA authentication strength not found' -Tag Test -Level Warning
-        Add-ZtTestResultDetail -SkippedBecause NotSupported -Result 'Phishing-resistant MFA authentication strength policy not found.'
+        Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'Phishing-resistant MFA authentication strength policy not found.'
         return
     }
 
