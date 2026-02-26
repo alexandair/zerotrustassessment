@@ -122,7 +122,15 @@ resources
         $allRateLimitRules = @($policy.CustomRules | Where-Object { $_.ruleType -eq 'RateLimitRule' })
         $enabledRateLimitRules = @($allRateLimitRules | Where-Object { $_.state -eq 'Enabled' })
         $rateLimitRuleCountDisplay = if ($allRateLimitRules.Count -gt 0) { "✅ $($allRateLimitRules.Count)" } else { '❌ 0' }
-        $ruleStateDisplay = if ($enabledRateLimitRules.Count -ge 1) { '✅ Enabled' } else { '❌ Disabled' }
+        $ruleStateDisplay = if ($allRateLimitRules.Count -eq 0) {
+            'N/A'
+        }
+        elseif ($enabledRateLimitRules.Count -ge 1) {
+            '✅ Enabled'
+        }
+        else {
+            '❌ Disabled'
+        }
         $enabledStateDisplay = if ($policy.EnabledState -eq 'Enabled') { '✅ Enabled' } else { '❌ Disabled' }
         $modeDisplay = if ($policy.Mode -eq 'Prevention') { '✅ Prevention' } else { '❌ Detection' }
         $statusDisplay = if ($policy.EnabledState -eq 'Enabled' -and $policy.Mode -eq 'Prevention' -and $enabledRateLimitRules.Count -ge 1) { '✅' } else { '❌' }
