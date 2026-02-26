@@ -78,6 +78,23 @@ function Test-Assessment-27003 {
     $activity = 'Checking TLS inspection failure rate'
     Write-ZtProgress -Activity $activity -Status 'Checking connections'
 
+    # Check Azure connection and cloud environment first to avoid unnecessary API calls
+    # in sovereign clouds (this test is only applicable to the Global/AzureCloud environment)
+    Write-ZtProgress -Activity $activity -Status 'Checking Azure connection'
+
+    $azContext = Get-AzContext -ErrorAction SilentlyContinue
+    if (-not $azContext) {
+        Write-PSFMessage 'Not connected to Azure.' -Tag Test -Level Warning
+        Add-ZtTestResultDetail -SkippedBecause NotConnectedAzure
+        return
+    }
+
+    if ($azContext.Environment.Name -ne 'AzureCloud') {
+        Write-PSFMessage 'This test is only applicable to the AzureCloud environment.' -Tag Test -Level VeryVerbose
+        Add-ZtTestResultDetail -SkippedBecause NotSupported
+        return
+    }
+
     # Prerequisite: TLS inspection must be configured
     Write-ZtProgress -Activity $activity -Status 'Checking TLS inspection policies'
 
@@ -101,22 +118,6 @@ function Test-Assessment-27003 {
 
     Write-PSFMessage "Found $($tlsInspectionPolicies.Count) TLS inspection policy/policies." -Tag Test -Level VeryVerbose
 
-    # Check Azure connection
-    Write-ZtProgress -Activity $activity -Status 'Checking Azure connection'
-
-    $azContext = Get-AzContext -ErrorAction SilentlyContinue
-    if (-not $azContext) {
-        Write-PSFMessage 'Not connected to Azure.' -Level Warning
-        Add-ZtTestResultDetail -SkippedBecause NotConnectedAzure
-        return
-    }
-
-    if ($azContext.Environment.Name -ne 'AzureCloud') {
-        Write-PSFMessage 'This test is only applicable to the AzureCloud environment.' -Tag Test -Level VeryVerbose
-        Add-ZtTestResultDetail -SkippedBecause NotSupported
-        return
-    }
-
     # Find Log Analytics workspace from Entra diagnostic settings
     Write-ZtProgress -Activity $activity -Status 'Querying diagnostic settings for Log Analytics workspace'
 
@@ -124,7 +125,7 @@ function Test-Assessment-27003 {
         $diagResult = Invoke-ZtAzureRequest -Path '/providers/microsoft.aadiam/diagnosticsettings?api-version=2017-04-01-preview' -FullResponse
 
         if ($diagResult.StatusCode -eq 403) {
-            Write-PSFMessage 'The signed-in user does not have access to check diagnostic settings.' -Level Verbose
+            Write-PSFMessage 'The signed-in user does not have access to check diagnostic settings.' -Tag Test -Level Verbose
             Add-ZtTestResultDetail -SkippedBecause NoAzureAccess
             return
         }
