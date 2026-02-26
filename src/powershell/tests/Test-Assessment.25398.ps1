@@ -67,14 +67,6 @@ WHERE list_contains(tags, 'PrivateAccessNonWebApplication')
         }
     }
 
-    if (-not $privateAccessApps) {
-        Write-PSFMessage 'Retrieving Private Access applications from Graph API' -Tag Test -Level VeryVerbose
-        $privateAccessApps = Invoke-ZtGraphRequest -RelativeUri 'applications' -QueryParameters @{
-            '$filter' = "tags/any(t:t eq 'PrivateAccessNonWebApplication')"
-            '$count' = 'true'
-            '$select' = 'id,appId,displayName'
-        } -ConsistencyLevel 'eventual'
-    }
 
     if (-not $privateAccessApps) {
         Write-PSFMessage "No Private Access applications found." -Tag Test -Level VeryVerbose
