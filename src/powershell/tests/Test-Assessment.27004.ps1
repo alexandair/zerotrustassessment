@@ -199,8 +199,21 @@ function Test-Assessment-27004 {
                         elseif ($sysFqdn -match '^\*\.(.+)$') {
                             # Standard wildcard: *.domain.com
                             $suffix = $Matches[1]
-                            if ($destLower -like "*.$suffix" -or $destLower -eq $suffix) { $isMatch = $true; $matchType = 'Subdomain' }
-                            elseif ($destLower -eq "*.$suffix") { $isMatch = $true; $matchType = 'Exact' }
+                            if ($destLower -eq "*.$suffix") {
+                                # Exact wildcard-to-wildcard match
+                                $isMatch = $true
+                                $matchType = 'Exact'
+                            }
+                            elseif ($destLower -like "*.$suffix") {
+                                # Subdomain of the wildcard suffix
+                                $isMatch = $true
+                                $matchType = 'Subdomain'
+                            }
+                            elseif ($destLower -eq $suffix) {
+                                # Base domain match
+                                $isMatch = $true
+                                $matchType = 'Subdomain'
+                            }
                         }
 
                         # Check if custom destination is a wildcard being covered by system base domain
