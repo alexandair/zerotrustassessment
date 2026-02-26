@@ -144,8 +144,8 @@ resources
 
 ## [{0}]({1})
 
-| Policy name | Subscription name | Policy state | Mode | JS Challenge rules | Rule state | JavaScript Challenge expiration (mins) | Status |
-| :---------- | :---------------- | :----------- | :--- | :----------------- | :--------- | :------------------------------------- | :----- |
+| Policy name | Subscription name | Policy state | Mode | JS Challenge rules count | Rule state | JavaScript Challenge expiration (mins) | Status |
+| :---------- | :---------------- | :----------- | :--- | :----------------------- | :--------- | :------------------------------------- | :----- |
 {2}
 
 '@
