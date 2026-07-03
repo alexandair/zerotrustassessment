@@ -7,7 +7,7 @@ function Test-Assessment-41029 {
     [ZtTest(
         Category = 'Email and collaboration security',
         ImplementationCost = 'Low',
-        Service = ('ExchangeOnline'),
+        Service = ('SecurityCompliance'),
         CompatibleLicense = ('EXCHANGE_S_STANDARD'),
         Pillar = 'SecOps',
         RiskLevel = 'High',
@@ -106,7 +106,7 @@ function Test-Assessment-41029 {
         if ($orphanedRules.Count -gt 0) {
             $customStatus = 'Investigate'
             $orphanNames = ($orphanedRules | ForEach-Object { Get-SafeMarkdown -Text $_.Name }) -join ', '
-            $testResultMarkdown = "⚠️ **Investigate:** $($orphanedRules.Count) enabled rule(s) reference a policy that does not exist (orphan rule); manual review is required. Orphaned rules: $orphanNames."
+            $testResultMarkdown = "⚠️ **Investigate:** $($orphanedRules.Count) enabled rule(s) reference a policy that does not exist (orphan rule); manual review is required. Orphaned rules: $orphanNames.`n`n%TestResult%"
         }
         else {
             # Steps 5–7: Evaluate compliance for each in-scope policy
@@ -132,15 +132,15 @@ function Test-Assessment-41029 {
             if ($investigatePolicies.Count -gt 0) {
                 $customStatus = 'Investigate'
                 $policyNames = ($investigatePolicies | ForEach-Object { Get-SafeMarkdown -Text $_.Identity }) -join ', '
-                $testResultMarkdown = "⚠️ **Investigate:** One or more in-scope policies apply a customer-defined quarantine policy whose release behavior cannot be confirmed by this check — cross-check spec 41030. Affected: $policyNames."
+                $testResultMarkdown = "⚠️ **Investigate:** One or more in-scope policies apply a customer-defined quarantine policy whose release behavior cannot be confirmed by this check — cross-check spec 41030. Affected: $policyNames.`n`n%TestResult%"
             }
             elseif ($nonCompliantPolicies.Count -gt 0) {
                 $passed = $false
-                $testResultMarkdown = "❌ One or more in-scope anti-malware policies have the Common Attachment Filter disabled, ZAP disabled, or apply a quarantine policy that permits recipient self-release of malware."
+                $testResultMarkdown = "❌ One or more in-scope anti-malware policies have the Common Attachment Filter disabled, ZAP disabled, or apply a quarantine policy that permits recipient self-release of malware.`n`n%TestResult%"
             }
             else {
                 $passed = $true
-                $testResultMarkdown = "✅ All in-scope anti-malware policies have the Common Attachment Filter enabled, zero-hour auto purge enabled, and route detected malware to an admin-only quarantine."
+                $testResultMarkdown = "✅ All in-scope anti-malware policies have the Common Attachment Filter enabled, zero-hour auto purge enabled, and route detected malware to an admin-only quarantine.`n`n%TestResult%"
             }
         }
     }
@@ -149,14 +149,11 @@ function Test-Assessment-41029 {
     #region Report Generation
     if ($inScopePolicies.Count -gt 0) {
         $totalInScope = $inScopePolicies.Count
-        $displayPolicies = $inScopePolicies | Select-Object -First 10
-        $truncated = $totalInScope -gt 10
+        $maxDisplay   = 10
+        $hasMoreItems = $totalInScope -gt $maxDisplay
 
-        $testResultMarkdown += "`n`n### [In-scope anti-malware policies](https://security.microsoft.com/antimalwarev2)`n`n"
-        $testResultMarkdown += "| Identity | Is default | Common attachment filter | File types (count) | ZAP | Quarantine tag | Applied | Result |`n"
-        $testResultMarkdown += "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |`n"
-
-        foreach ($policy in $displayPolicies) {
+        $tableRows = ''
+        foreach ($policy in ($inScopePolicies | Select-Object -First $maxDisplay)) {
             $identity       = Get-SafeMarkdown -Text $policy.Identity
             $isDefault      = if ($policy.IsDefault -eq $true) { 'Yes' } else { 'No' }
             $fileFilter     = if ($policy.EnableFileFilter -eq $true) { '✅ Yes' } else { '❌ No' }
@@ -166,18 +163,33 @@ function Test-Assessment-41029 {
             $applied        = if ($policy.IsDefault -eq $true) { 'Default catch-all' } else { 'Via enabled rule' }
             $rowResult      = $policy.RowResult
 
-            $testResultMarkdown += "| $identity | $isDefault | $fileFilter | $fileTypesCount | $zap | $quarantineTag | $applied | $rowResult |`n"
+            $tableRows += "| $identity | $isDefault | $fileFilter | $fileTypesCount | $zap | $quarantineTag | $applied | $rowResult |`n"
         }
 
-        if ($truncated) {
-            $testResultMarkdown += "| ... | | | | | | | |`n"
-            $testResultMarkdown += "`n_Showing first 10 of $totalInScope policies. [View all anti-malware policies](https://security.microsoft.com/antimalwarev2)._`n"
+        if ($hasMoreItems) {
+            $remaining  = $totalInScope - $maxDisplay
+            $tableRows += "`n... and $remaining more. [View all anti-malware policies](https://security.microsoft.com/antimalwarev2)`n"
         }
 
         $internalNotifyCount = @($inScopePolicies | Where-Object { $_.EnableInternalSenderAdminNotifications -eq $true }).Count
         $externalNotifyCount = @($inScopePolicies | Where-Object { $_.EnableExternalSenderAdminNotifications -eq $true }).Count
-        $testResultMarkdown += "`n_Of $totalInScope in-scope policies, $internalNotifyCount have internal sender admin notifications enabled and $externalNotifyCount have external sender admin notifications enabled. Microsoft's baseline recommends both off; these settings do not affect this check's Pass/Fail._`n"
+        $notificationNote    = "_Of $totalInScope in-scope policies, $internalNotifyCount have internal sender admin notifications enabled and $externalNotifyCount have external sender admin notifications enabled. Microsoft's baseline recommends both off; these settings do not affect this check's Pass/Fail._"
 
+        $antimalwarePortalUrl = 'https://security.microsoft.com/antimalwarev2'
+
+        $formatTemplate = @'
+
+
+## [In-scope anti-malware policies]({0})
+
+| Identity | Is default | Common attachment filter | File types (count) | ZAP | Quarantine tag | Applied | Result |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+{1}
+{2}
+'@
+
+        $mdInfo             = $formatTemplate -f $antimalwarePortalUrl, $tableRows, $notificationNote
+        $testResultMarkdown = $testResultMarkdown -replace '%TestResult%', $mdInfo
     }
     #endregion Report Generation
 
