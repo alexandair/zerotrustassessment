@@ -1,4 +1,4 @@
-# Microsoft Zero Trust Assessment V2 - Private Preview
+# Microsoft Zero Trust Assessment - Preview
 
 > The shortlink to this page is: [aka.ms/zerotrust/v2/privatepreview](https://aka.ms/zerotrust/v2/privatepreview)
 
@@ -58,6 +58,7 @@ The consent prompt is only displayed if the Graph PowerShell app does not alread
 
 - Application.Read.All
 - AuditLog.Read.All
+- CopilotPackages.Read.All
 - CrossTenantInformation.ReadBasic.All
 - CustomSecAttributeAssignment.Read.All
 - DeviceManagementApps.Read.All
@@ -69,21 +70,24 @@ The consent prompt is only displayed if the Graph PowerShell app does not alread
 - DirectoryRecommendations.Read.All
 - EntitlementManagement.Read.All
 - IdentityRiskEvent.Read.All
+- IdentityRiskyServicePrincipal.Read.All
 - IdentityRiskyUser.Read.All
 - LifecycleWorkflows-Workflow.Read.All
+- NetworkAccess.Read.All
 - Policy.Read.All
 - Policy.Read.ConditionalAccess
 - Policy.Read.PermissionGrant
 - PrivilegedAccess.Read.AzureAD
+- PrivilegedAssignmentSchedule.Read.AzureADGroup
+- PrivilegedEligibilitySchedule.Read.AzureADGroup
 - Reports.Read.All
 - RoleManagement.Read.All
-- UserAuthenticationMethod.Read.All
-- NetworkAccess.Read.All
-- IdentityRiskyServicePrincipal.Read.All
-- CopilotPackages.Read.All
+- SecurityAlert.Read.All
 - SecurityEvents.Read.All
-- SecurityIdentitiesSensors.Read.All
 - SecurityIdentitiesHealth.Read.All
+- SecurityIdentitiesSensors.Read.All
+- SecurityIncident.Read.All
+- UserAuthenticationMethod.Read.All
 
 Run the following command to connect to Microsoft Graph and consent to the permissions using a Global Administrator account.
 
