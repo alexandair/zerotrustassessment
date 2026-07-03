@@ -27,15 +27,45 @@ function Test-Assessment-41029 {
     Write-ZtProgress -Activity $activity -Status 'Getting anti-malware filter policies'
 
     # Q1: Enumerate all anti-malware filter policies and their settings
-    $policies = @(Get-MalwareFilterPolicy |
-        Select-Object Identity, IsDefault, EnableFileFilter, FileTypes, ZapEnabled, QuarantineTag,
-                      EnableInternalSenderAdminNotifications, EnableExternalSenderAdminNotifications,
-                      ExternalSenderAdminAddress)
+    $policies = $null
+    try {
+        $policies = @(Get-MalwareFilterPolicy -ErrorAction Stop |
+            Select-Object Identity, IsDefault, EnableFileFilter, FileTypes, ZapEnabled, QuarantineTag,
+                          EnableInternalSenderAdminNotifications, EnableExternalSenderAdminNotifications,
+                          ExternalSenderAdminAddress)
+    }
+    catch {
+        Write-PSFMessage "Failed to retrieve anti-malware filter policies: $_" -Tag Test -Level Warning
+        $params = @{
+            TestId       = '41029'
+            Title        = 'Anti-malware policies are configured according to recommended settings'
+            Status       = $false
+            Result       = '⚠️ Anti-malware filter policies could not be retrieved; verify Exchange Online permissions and re-run.'
+            CustomStatus = 'Investigate'
+        }
+        Add-ZtTestResultDetail @params
+        return
+    }
 
     # Q2: Enumerate all anti-malware filter rules (required to determine which custom policies are in-scope)
     Write-ZtProgress -Activity $activity -Status 'Getting anti-malware filter rules'
-    $rules = @(Get-MalwareFilterRule |
-        Select-Object Name, MalwareFilterPolicy, Priority, State)
+    $rules = $null
+    try {
+        $rules = @(Get-MalwareFilterRule -ErrorAction Stop |
+            Select-Object Name, MalwareFilterPolicy, Priority, State)
+    }
+    catch {
+        Write-PSFMessage "Failed to retrieve anti-malware filter rules: $_" -Tag Test -Level Warning
+        $params = @{
+            TestId       = '41029'
+            Title        = 'Anti-malware policies are configured according to recommended settings'
+            Status       = $false
+            Result       = '⚠️ Anti-malware filter policies were retrieved but the associated rules could not be read; the set of actively applied policies cannot be determined. Verify Exchange Online permissions and re-run.'
+            CustomStatus = 'Investigate'
+        }
+        Add-ZtTestResultDetail @params
+        return
+    }
     #endregion Data Collection
 
     #region Assessment Logic
