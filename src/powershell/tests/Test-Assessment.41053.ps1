@@ -87,7 +87,7 @@ function Test-Assessment-41053 {
     }
 
     # Determine ignored state from the most recent controlStateUpdates entry.
-    $latestStateUpdate = @($controlProfile.controlStateUpdates | Sort-Object { [datetime]::Parse($_.updatedDateTime) } -Descending) | Select-Object -First 1
+    $latestStateUpdate = @($controlProfile.controlStateUpdates | Sort-Object { if ($_.updatedDateTime) { [datetime]$_.updatedDateTime } else { [datetime]::MinValue } } -Descending) | Select-Object -First 1
     $isIgnored = $latestStateUpdate -and $latestStateUpdate.state -eq 'ignored'
 
     $score    = $scoreEntry.score
