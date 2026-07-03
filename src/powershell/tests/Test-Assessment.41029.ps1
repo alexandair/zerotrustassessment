@@ -7,7 +7,7 @@ function Test-Assessment-41029 {
     [ZtTest(
         Category = 'Email and collaboration security',
         ImplementationCost = 'Low',
-        Service = ('SecurityCompliance'),
+        Service = ('ExchangeOnline'),
         CompatibleLicense = ('EXCHANGE_S_STANDARD'),
         Pillar = 'SecOps',
         RiskLevel = 'High',
@@ -26,35 +26,19 @@ function Test-Assessment-41029 {
     $activity = 'Checking anti-malware policy configuration'
     Write-ZtProgress -Activity $activity -Status 'Getting anti-malware filter policies'
 
-    $policies = @()
-    $rules = @()
-    $errorMsg = $null
+    # Q1: Enumerate all anti-malware filter policies and their settings
+    $policies = @(Get-MalwareFilterPolicy |
+        Select-Object Identity, IsDefault, EnableFileFilter, FileTypes, ZapEnabled, QuarantineTag,
+                      EnableInternalSenderAdminNotifications, EnableExternalSenderAdminNotifications,
+                      ExternalSenderAdminAddress)
 
-    try {
-        # Q1: Enumerate all anti-malware filter policies and their settings
-        $policies = @(Get-MalwareFilterPolicy -ErrorAction Stop |
-            Select-Object Identity, IsDefault, EnableFileFilter, FileTypes, ZapEnabled, QuarantineTag,
-                          EnableInternalSenderAdminNotifications, EnableExternalSenderAdminNotifications,
-                          ExternalSenderAdminAddress)
-
-        # Q2: Enumerate all anti-malware filter rules (required to determine which custom policies are in-scope)
-        Write-ZtProgress -Activity $activity -Status 'Getting anti-malware filter rules'
-        $rules = @(Get-MalwareFilterRule -ErrorAction Stop |
-            Select-Object Name, MalwareFilterPolicy, Priority, State)
-    }
-    catch {
-        $errorMsg = $_
-        Write-PSFMessage "Error querying anti-malware configuration: $_" -Level Error
-    }
+    # Q2: Enumerate all anti-malware filter rules (required to determine which custom policies are in-scope)
+    Write-ZtProgress -Activity $activity -Status 'Getting anti-malware filter rules'
+    $rules = @(Get-MalwareFilterRule |
+        Select-Object Name, MalwareFilterPolicy, Priority, State)
     #endregion Data Collection
 
     #region Assessment Logic
-    if ($errorMsg) {
-        Write-PSFMessage 'Not connected to Exchange Online.' -Level Warning
-        Add-ZtTestResultDetail -SkippedBecause NotConnectedExchange
-        return
-    }
-
     $passed = $false
     $customStatus = $null
     $inScopePolicies = [System.Collections.Generic.List[object]]::new()
@@ -105,6 +89,9 @@ function Test-Assessment-41029 {
 
         if ($orphanedRules.Count -gt 0) {
             $customStatus = 'Investigate'
+            foreach ($policy in $inScopePolicies) {
+                $policy | Add-Member -NotePropertyName RowResult -NotePropertyValue '⚠️ Investigate' -Force
+            }
             $orphanNames = ($orphanedRules | ForEach-Object { Get-SafeMarkdown -Text $_.Name }) -join ', '
             $testResultMarkdown = "⚠️ **Investigate:** $($orphanedRules.Count) enabled rule(s) reference a policy that does not exist (orphan rule); manual review is required. Orphaned rules: $orphanNames.`n`n%TestResult%"
         }
@@ -135,7 +122,6 @@ function Test-Assessment-41029 {
                 $testResultMarkdown = "⚠️ **Investigate:** One or more in-scope policies apply a customer-defined quarantine policy whose release behavior cannot be confirmed by this check — cross-check spec 41030. Affected: $policyNames.`n`n%TestResult%"
             }
             elseif ($nonCompliantPolicies.Count -gt 0) {
-                $passed = $false
                 $testResultMarkdown = "❌ One or more in-scope anti-malware policies have the Common Attachment Filter disabled, ZAP disabled, or apply a quarantine policy that permits recipient self-release of malware.`n`n%TestResult%"
             }
             else {
