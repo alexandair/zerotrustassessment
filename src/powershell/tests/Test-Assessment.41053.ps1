@@ -40,7 +40,8 @@ function Test-Assessment-41053 {
     Write-ZtProgress -Activity $activity -Status 'Reading Secure Score control profile (Q1)'
     try {
         # Q1: Read the Secure Score control profile for the pinned network protection control.
-        $controlProfile = Invoke-ZtGraphRequest -RelativeUri 'security/secureScoreControlProfiles' -Filter "service eq 'MDATP' and id eq '$controlId'" -ApiVersion beta -ErrorAction Stop
+        $profileResults = Invoke-ZtGraphRequest -RelativeUri 'security/secureScoreControlProfiles' -Filter "service eq 'MDATP' and id eq '$controlId'" -ApiVersion beta -ErrorAction Stop
+        $controlProfile = $profileResults | Select-Object -First 1
     }
     catch {
         $q1Error = $_
@@ -50,7 +51,9 @@ function Test-Assessment-41053 {
     Write-ZtProgress -Activity $activity -Status 'Reading latest Secure Score snapshot (Q2)'
     try {
         # Q2: Read the latest Secure Score snapshot.
-        $secureScore = Invoke-ZtGraphRequest -RelativeUri 'security/secureScores' -Top '1' -ApiVersion beta -ErrorAction Stop
+        $response = Invoke-ZtGraphRequest -RelativeUri 'security/secureScores' -Top '1' -ApiVersion beta -DisablePaging -ErrorAction Stop
+        # DisablePaging returns the raw response; unwrap the value array.
+        $secureScore = if ($response.value) { $response.value | Select-Object -First 1 } else { $response }
     }
     catch {
         $q2Error = $_
