@@ -62,7 +62,7 @@ function Test-Assessment-41053 {
     # 401/403 on either query → Skipped (SecurityEvents.Read.All not consented or insufficient role).
     foreach ($queryErr in @($q1Error, $q2Error) | Where-Object { $null -ne $_ }) {
         if ((Get-ZtHttpStatusCode -ErrorRecord $queryErr) -in (401, 403)) {
-            Add-ZtTestResultDetail -SkippedBecause NotApplicable
+            Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'Microsoft Graph returned HTTP 401 or 403; grant `SecurityEvents.Read.All` and assign Security Reader or Security Administrator for delegated runs.'
             return
         }
     }
@@ -107,7 +107,7 @@ function Test-Assessment-41053 {
     $ignoredDisplay  = if ($isIgnored) { '⚠️ Yes' } else { '✅ No' }
     $rowStatus       = if ($passed) { '✅ Pass' } else { '❌ Fail' }
     $lastModified    = if ($controlProfile.lastModifiedDateTime) { Get-FormattedDate -DateString $controlProfile.lastModifiedDateTime } else { '—' }
-    $implStatus      = if ($controlProfile.implementationStatus) { $controlProfile.implementationStatus } else { '—' }
+    $implStatus      = if ($scoreEntry.implementationStatus) { $scoreEntry.implementationStatus } else { '—' }
 
     $formatTemplate = @'
 
