@@ -209,14 +209,14 @@ function Test-Assessment-41019 {
 
     $tableRows = ''
     foreach ($row in $displayRows) {
-        $alertTitle = $row.AlertTitle
+        $alertTitle = Get-SafeMarkdown -Text $row.AlertTitle
         $userAccount = $row.UserAccount
 
         # Prefer UPN; fall back to domainName\accountName (down-level format matching MDI on-prem display).
         $userDisplay = if (-not [string]::IsNullOrEmpty($userAccount.userPrincipalName)) {
             Get-SafeMarkdown -Text $userAccount.userPrincipalName
         } else {
-            "$($userAccount.domainName)\$($userAccount.accountName)"
+            Get-SafeMarkdown -Text "$($userAccount.domainName)\$($userAccount.accountName)"
         }
 
         $severity          = $row.AlertSeverity
@@ -226,7 +226,7 @@ function Test-Assessment-41019 {
             { $_ -in $inProgressStatuses -or $_ -eq 'absent' }  { "⚠️ $($row.RemediationStatus)" }
             default                                              { "❌ $($row.RemediationStatus)" }
         }
-        $assignedTo        = if ([string]::IsNullOrEmpty($row.AssignedTo)) { '—' } else { $row.AssignedTo }
+        $assignedTo        = if ([string]::IsNullOrEmpty($row.AssignedTo)) { '—' } else { Get-SafeMarkdown -Text $row.AssignedTo }
         $firstActivity     = if ([string]::IsNullOrEmpty($row.FirstActivity)) { '—' } else { Get-FormattedDate -DateString $row.FirstActivity }
 
         $incidentCell = if (-not [string]::IsNullOrEmpty($row.IncidentWebUrl)) {
