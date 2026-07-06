@@ -13,7 +13,7 @@
 function Test-Assessment-41053 {
     [ZtTest(
         Category = 'Endpoint threat protection',
-        CompatibleLicense = ('WINDEFATP'),
+        CompatibleLicense = ('ATA'),
         ImplementationCost = 'Low',
         Pillar = 'SecOps',
         RiskLevel = 'High',
