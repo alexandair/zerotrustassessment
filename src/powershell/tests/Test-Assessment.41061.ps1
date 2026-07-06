@@ -34,7 +34,7 @@ function Test-Assessment-41061 {
 
     $windowStart    = (Get-Date).AddHours(-24).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     $incidentFilter = "createdDateTime ge $windowStart"
-    $incidentSelect = 'id,displayName,severity,status,assignedTo,classification,determination,createdDateTime,lastUpdateDateTime,priorityScore,incidentWebUrl'
+    $incidentSelect = 'displayName,severity,status,assignedTo,classification,determination,createdDateTime,incidentWebUrl'
 
     $allIncidents = $null
 
@@ -127,9 +127,8 @@ function Test-Assessment-41061 {
     }
     $incidentResults = @($incidentResults)
 
-    $failItems    = @($incidentResults | Where-Object { $_.RowResult -eq 'Fail' })
-    $passed       = $failItems.Count -eq 0
-    $customStatus = $null
+    $failItems = @($incidentResults | Where-Object { $_.RowResult -eq 'Fail' })
+    $passed   = $failItems.Count -eq 0
 
     if ($passed) {
         $testResultMarkdown = "✅ All Microsoft Defender XDR incidents from the last 24 hours are triaged, assigned, and (when closed) classified.`n`n%TestResult%"
@@ -192,9 +191,6 @@ function Test-Assessment-41061 {
         Title  = 'All active Microsoft Defender XDR incidents are triaged and remediated'
         Status = $passed
         Result = $testResultMarkdown
-    }
-    if ($customStatus) {
-        $params.CustomStatus = $customStatus
     }
     Add-ZtTestResultDetail @params
 }
