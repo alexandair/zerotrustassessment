@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Checks that all active Microsoft Defender XDR incidents from the last 24 hours are triaged and remediated.
+    Checks that Microsoft Defender XDR incidents from the last 24 hours are triaged and remediated.
 
 .NOTES
     Test ID: 41061
