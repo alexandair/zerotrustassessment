@@ -40,7 +40,6 @@ function Test-Assessment-41032 {
     $params = @{
         TestId = '41032'
         Title  = 'Safe Links policies in Microsoft Defender for Office 365 are configured to scan and block malicious URLs'
-        Status = $false
     }
 
     #region Data Collection

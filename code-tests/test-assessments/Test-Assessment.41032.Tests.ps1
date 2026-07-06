@@ -11,11 +11,14 @@ Describe "Test-Assessment-41032" {
         if (-not (Get-Command Write-ZtProgress -ErrorAction SilentlyContinue)) {
             function global:Write-ZtProgress {}
         }
+        # Use [CmdletBinding()] so the stubs expose the common parameters (including -ErrorAction as a
+        # value, e.g. 'Stop'). Declaring param([switch]$ErrorAction) would shadow the common parameter
+        # and fail to bind the SUT's `-ErrorAction Stop` on hosts where ExchangeOnlineManagement is absent.
         if (-not (Get-Command Get-SafeLinksPolicy -ErrorAction SilentlyContinue)) {
-            function global:Get-SafeLinksPolicy { param([switch]$ErrorAction) }
+            function global:Get-SafeLinksPolicy { [CmdletBinding()] param() }
         }
         if (-not (Get-Command Get-SafeLinksRule -ErrorAction SilentlyContinue)) {
-            function global:Get-SafeLinksRule { param([switch]$ErrorAction) }
+            function global:Get-SafeLinksRule { [CmdletBinding()] param() }
         }
         # Add-ZtTestResultDetail needs a faithful param block: Should -Invoke -ParameterFilter can
         # only bind named args if the mocked command exposes those parameters.
