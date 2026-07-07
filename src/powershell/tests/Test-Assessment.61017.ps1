@@ -26,7 +26,7 @@ function Test-Assessment-61017 {
         Category = 'AI Threat Detection',
         ImplementationCost = 'Low',
         Service = ('Azure'),
-        MinimumLicense = ('Microsoft_Defender_for_AI_Services', 'Consumption-based: Microsoft Sentinel'),
+        MinimumLicense = ('Microsoft_Defender_for_AI_Services', 'Microsoft_Sentinel'),
         Pillar = 'AI',
         RiskLevel = 'High',
         SfiPillar = 'Monitor and detect cyberthreats',
@@ -48,23 +48,23 @@ function Test-Assessment-61017 {
     # 'NoSubscriptions' / 'NoWorkspaces' when nothing is in scope.
     $allWorkspaces = Get-SentinelWorkspaceData -Activity $activity
 
-    if ($null -eq $allWorkspaces) {
-        $params = @{
-            TestId       = '61017'
-            Title        = 'Microsoft Defender for AI Services alerts are flowing to the Microsoft Sentinel workspace via a single connector path'
-            Status       = $false
-            Result       = '⚠️ Azure Resource Graph returned an unexpected error while querying subscriptions or Log Analytics workspaces. This is likely a transient issue, please re-run the assessment.'
-            CustomStatus = 'Investigate'
-        }
-        Add-ZtTestResultDetail @params
-        return
-    }
     if ($allWorkspaces -eq 'Forbidden') {
         $params = @{
             TestId       = '61017'
             Title        = 'Microsoft Defender for AI Services alerts are flowing to the Microsoft Sentinel workspace via a single connector path'
             Status       = $false
             Result       = '⚠️ Azure Resource Graph returned insufficient permissions when querying subscriptions or workspaces. Ensure you have at least Reader access to the Azure subscriptions being tested.'
+            CustomStatus = 'Investigate'
+        }
+        Add-ZtTestResultDetail @params
+        return
+    }
+    if ($null -eq $allWorkspaces) {
+        $params = @{
+            TestId       = '61017'
+            Title        = 'Microsoft Defender for AI Services alerts are flowing to the Microsoft Sentinel workspace via a single connector path'
+            Status       = $false
+            Result       = '⚠️ Azure Resource Graph returned an unexpected error while querying subscriptions or Log Analytics workspaces. This is likely a transient issue, please re-run the assessment.'
             CustomStatus = 'Investigate'
         }
         Add-ZtTestResultDetail @params
@@ -104,7 +104,7 @@ function Test-Assessment-61017 {
                 TestId = '61017'
                 Title  = 'Microsoft Defender for AI Services alerts are flowing to the Microsoft Sentinel workspace via a single connector path'
                 Status = $false
-                Result = '❌ No Sentinel-onboarded workspace in tenant.'
+                Result = '❌ Blocked by 61002: no Sentinel-onboarded workspace in tenant.'
             }
         }
         Add-ZtTestResultDetail @params
@@ -122,7 +122,6 @@ resources
 | join kind=leftouter (
     resourcecontainers
     | where type =~ 'microsoft.resources/subscriptions'
-    | where properties.state =~ 'Enabled'
     | project subscriptionId, subscriptionDisplayName=name
 ) on subscriptionId
 | project id, name, subscriptionId, subscriptionDisplayName
@@ -310,8 +309,8 @@ resources
         # forward Defender for Cloud alerts. MSI creation rule + XDR connector together is an
         # additional implicit MDC path, so treat it as a duplicate even with only one connector.
         $activeChannels = @()
-        if ($tenantMDCActive)    { $activeChannels += 'Tenant-based MDC (ARM)' }
-        if ($legacyMDCActive)    { $activeChannels += 'Legacy MDC (ARM)' }
+        if ($tenantMDCActive)    { $activeChannels += 'Tenant-based (ARM)' }
+        if ($legacyMDCActive)    { $activeChannels += 'Legacy (ARM)' }
         if ($xdrConnectorActive) { $activeChannels += 'Defender XDR (ARM)' }
         if ($mdcPackageInstalled) { $activeChannels += 'MDC Content Pack' }
         if ($xdrPackageInstalled) { $activeChannels += 'XDR Content Pack' }
@@ -325,7 +324,7 @@ resources
         if ($activeChannels.Count -eq 0) {
             $pathStatus       = 'None'
             $alertPathLabel   = 'None'
-            $duplicateWarning = '❌ No'
+            $duplicateWarning = '—'
         }
         elseif ($isDuplicate) {
             $conflictDetail   = if ($xdrMsiConflict -and $activeChannels.Count -le 1) {
@@ -405,6 +404,7 @@ resources
         $testResultMarkdown = "❌ The Defender for AI Services plan is not enabled on any subscription with AI accounts, or no alert path is configured, or the Sentinel onboarding check failed.`n`n%TestResult%"
     }
     else {
+        # Half A passed but Half B missing — more specific than the spec's combined Fail message.
         $testResultMarkdown = "❌ The Defender for AI Services plan is enabled, but no valid alert-forwarding path is configured on a Sentinel-onboarded workspace.`n`n%TestResult%"
     }
 
@@ -423,7 +423,7 @@ resources
     }
     else {
         $tenantAlertPathLabel   = 'None'
-        $tenantDuplicateWarning = '❌ No'
+        $tenantDuplicateWarning = '—'
     }
 
     # Apply workspace-level duplicate warning to tenant display if any workspace has duplicates.

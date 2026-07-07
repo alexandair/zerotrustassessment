@@ -2,7 +2,6 @@ Defender for Cloud's AI threat protection plan detects attacks against Azure Ope
 
 When the Defender for AI Services plan is not enabled, attacks against Azure OpenAI and Azure AI Services accounts generate no security alerts regardless of how Sentinel is configured. Threat actors who target AI endpoints with prompt injection, jailbreak techniques, or data extraction queries can exploit this absence because there is no detection layer to observe or interrupt their activity. Without this plan, the organization cannot detect any of the AI-specific attacks in the [Defender for AI Services alert reference](https://learn.microsoft.com/azure/defender-for-cloud/alerts-ai-workloads) — prompt injection, jailbreak attempts, wallet exhaustion, and sensitive data exposure all go unobserved.
 
-**Sources:** [Overview - AI threat protection](https://learn.microsoft.com/azure/defender-for-cloud/ai-threat-protection) and [Connect Defender for Cloud to Microsoft Sentinel](https://learn.microsoft.com/azure/sentinel/connect-defender-for-cloud)
 
 **Remediation action**
 
