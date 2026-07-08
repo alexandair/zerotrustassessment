@@ -104,7 +104,7 @@ function Test-Assessment-61017 {
                 TestId = '61017'
                 Title  = 'Microsoft Defender for AI Services alerts are flowing to the Microsoft Sentinel workspace via a single connector path'
                 Status = $false
-                Result = '❌ Blocked by 61002: no Sentinel-onboarded workspace in tenant.'
+                Result = '❌ No Sentinel-onboarded workspace was found in the tenant. Ensure Microsoft Sentinel is onboarded on at least one Log Analytics workspace and re-run the assessment.'
             }
         }
         Add-ZtTestResultDetail @params
@@ -119,9 +119,10 @@ resources
 | where type =~ 'Microsoft.CognitiveServices/accounts'
 | where kind in ('OpenAI', 'AIServices')
 | project id, name, subscriptionId
-| join kind=leftouter (
+| join kind=inner (
     resourcecontainers
     | where type =~ 'microsoft.resources/subscriptions'
+    | where properties.state =~ 'Enabled'
     | project subscriptionId, subscriptionDisplayName=name
 ) on subscriptionId
 | project id, name, subscriptionId, subscriptionDisplayName
