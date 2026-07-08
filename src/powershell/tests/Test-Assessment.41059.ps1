@@ -191,7 +191,7 @@ function Test-Assessment-41059 {
     $mdTable = @"
 
 $mdFailLink
-| Control title | Control id | Score | Max Score | Ignored | Last modified | Status |
+| Control title | Control id | Score | Max score | Ignored | Last modified | Status |
 | :------------ | :--------- | :---- | :-------- | :------ | :------------ | :----- |
 $tableRows
 "@
