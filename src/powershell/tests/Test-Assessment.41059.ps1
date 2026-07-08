@@ -88,17 +88,16 @@ function Test-Assessment-41059 {
     $passed       = $false
     $customStatus = $null
 
-    # ── Q1 failed: 401/403 → Skipped; missing profile or unexpected error → Investigate ──
+    # ── Q1 failed: 401/403, unexpected error, or missing profile → Investigate ──
     if ($null -eq $controlProfile) {
         if ($httpStatusQ1 -in @(401, 403)) {
-            Add-ZtTestResultDetail -SkippedBecause NotApplicable
-            return
+            $investigateReason = 'The **SecurityEvents.Read.All** permission is required to read Secure Score control profiles. Verify the permission is consented and re-run the assessment.'
         }
         elseif ($null -ne $errorMsgQ1) {
-            $investigateReason = "Microsoft Graph returned an unexpected error retrieving the EDR in block mode Secure Score control profile. Re-run the assessment in 5–10 minutes and verify ``SecurityEvents.Read.All`` is consented."
+            $investigateReason = 'Microsoft Graph returned an unexpected error retrieving the EDR in block mode Secure Score control profile. Re-run the assessment in 5–10 minutes and verify **SecurityEvents.Read.All** is consented.'
         }
         else {
-            $investigateReason = "The EDR in block mode Secure Score control profile (``$controlId``) was not found in this tenant's Microsoft Secure Score. Verify that Microsoft Defender for Endpoint Plan 2 is licensed and onboarded."
+            $investigateReason = 'The EDR in block mode Secure Score control or latest Secure Score snapshot could not be located.'
         }
 
         $testResultMarkdown = "⚠️ $investigateReason"
@@ -120,7 +119,7 @@ function Test-Assessment-41059 {
 
     # ── Investigate: Q2 returned no snapshot ──
     if ($null -eq $latestSecureScore) {
-        $testResultMarkdown = "⚠️ The EDR in block mode control profile exists but the current Microsoft Secure Score snapshot could not be retrieved."
+        $testResultMarkdown = '⚠️ The EDR in block mode control profile exists but the current Microsoft Secure Score snapshot could not be retrieved.'
         $customStatus       = 'Investigate'
 
         $params = @{
@@ -144,7 +143,7 @@ function Test-Assessment-41059 {
 
     # ── Investigate: profile exists but snapshot has no scored entry for this control ──
     if ($null -eq $controlScoreEntry) {
-        $testResultMarkdown = "⚠️ The EDR in block mode control profile (``$controlId``) exists but the latest Secure Score snapshot has no scored entry for this control."
+        $testResultMarkdown = "⚠️ The EDR in block mode control profile (**$controlId**) exists but the latest Secure Score snapshot has no scored entry for this control."
         $customStatus       = 'Investigate'
 
         $params = @{
