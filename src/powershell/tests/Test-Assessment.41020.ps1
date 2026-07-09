@@ -106,9 +106,10 @@ function Test-Assessment-41020 {
     $classifiedIssues = foreach ($issue in $healthIssues) {
         $created  = if ($issue.createdDateTime)      { [datetime]$issue.createdDateTime }      else { $now }
         $modified = if ($issue.lastModifiedDateTime) { [datetime]$issue.lastModifiedDateTime } else { $created }
-        $ageDays  = [math]::Floor(($now - $created).TotalDays)
+        $ageTotalDays = ($now - $created).TotalDays
+        $ageDays     = [int][math]::Floor($ageTotalDays)
 
-        $rowStatus = if ($ageDays -le $staleDays) {
+        $rowStatus = if ($ageTotalDays -le $staleDays) {
             'OK'
         } elseif (($now - $modified).TotalDays -le $staleDays) {
             'In remediation'
@@ -187,7 +188,7 @@ function Test-Assessment-41020 {
         $preTableLines = ''
         if ($totalCount -gt $maxDisplay) {
             $tableRows     += "| ... | ... | ... | ... | ... | ... | ... |`n"
-            $preTableLines  = "Showing 10 of $totalCount issues`n`n"
+            $preTableLines  = "Showing $maxDisplay of $totalCount issues`n`n"
         }
 
         $formatTemplate = @'
