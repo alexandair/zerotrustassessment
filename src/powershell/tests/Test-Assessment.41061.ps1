@@ -38,11 +38,11 @@ function Test-Assessment-41061 {
 
     # Server-side OData filter encoding all three evaluation rules — only failing incidents are returned.
     # Rule (a): unassigned and not a merged redirect.
-    # Rule (b): high-severity, still active, older than 4 h (le = created before the SLA threshold).
+    # Rule (b): high-severity, still active, strictly older than 4 h (lt = created before the SLA threshold, exclusive).
     # Rule (c): resolved but missing a meaningful classification or determination.
     $incidentFilter = "createdDateTime ge $windowStart and " +
                       "((assignedTo eq null and status ne 'redirected') or " +
-                      "(severity eq 'high' and status eq 'active' and createdDateTime le $slaThreshold) or " +
+                      "(severity eq 'high' and status eq 'active' and createdDateTime lt $slaThreshold) or " +
                       "(status eq 'resolved' and (classification eq 'unknown' or determination eq 'unknown')))"
     $incidentSelect = 'displayName,severity,status,assignedTo,classification,determination,createdDateTime,incidentWebUrl'
 
@@ -96,13 +96,14 @@ function Test-Assessment-41061 {
 
     # Annotate each returned (failing) incident with per-rule flags for per-cell decoration in the report.
     $incidentResults = foreach ($incident in $failingIncidents) {
-        $hoursOpen  = [math]::Round(($now - [datetime]$incident.createdDateTime).TotalHours, 1)
-        $isAssigned = -not [string]::IsNullOrWhiteSpace($incident.assignedTo)
+        $hoursOpenRaw = ($now - [datetime]$incident.createdDateTime).TotalHours
+        $hoursOpen    = [math]::Round($hoursOpenRaw, 1)
+        $isAssigned   = -not [string]::IsNullOrWhiteSpace($incident.assignedTo)
 
         # Condition (a): unassigned and not a merged redirect.
         $failUnassigned = (-not $isAssigned) -and ($incident.status -ne 'redirected')
-        # Condition (b): high-severity active incident past the 4-hour SLA.
-        $failSla = $incident.severity -eq 'high' -and $incident.status -eq 'active' -and $hoursOpen -gt 4
+        # Condition (b): high-severity active incident strictly past the 4-hour SLA; use unrounded value to avoid rounding a near-boundary incident to exactly 4.0.
+        $failSla = $incident.severity -eq 'high' -and $incident.status -eq 'active' -and $hoursOpenRaw -gt 4
         # Condition (c): resolved without a meaningful classification or determination.
         $failClassification = $incident.status -eq 'resolved' -and ($incident.classification -eq 'unknown' -or $incident.determination -eq 'unknown')
 
