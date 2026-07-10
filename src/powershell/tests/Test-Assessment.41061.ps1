@@ -51,12 +51,14 @@ function Test-Assessment-41061 {
     try {
         # Q1: Retrieve up to 10 incidents that breach at least one triage/remediation rule.
         # -DisablePaging prevents auto-following of nextLink so $top=10 is respected as a hard cap.
+        # $count=true returns @odata.count with the true total so the report can show a truncation indicator.
         # Prefer: include-unknown-enum-members is required so that awaitingAction is returned as its real string.
-        $response = Invoke-ZtGraphRequest -RelativeUri 'security/incidents' -ApiVersion beta -Filter $incidentFilter -Select $incidentSelect -Top 10 -Headers @{ Prefer = 'include-unknown-enum-members' } -ErrorAction Stop -DisablePaging
+        $response = Invoke-ZtGraphRequest -RelativeUri 'security/incidents' -ApiVersion beta -Filter $incidentFilter -Select $incidentSelect -Top 10 -QueryParameters @{ '$count' = 'true' } -Headers @{ Prefer = 'include-unknown-enum-members' } -ErrorAction Stop -DisablePaging
     }
     catch {
         $httpStatus = Get-ZtHttpStatusCode -ErrorRecord $_
         if ($httpStatus -in @(401, 403)) {
+            Write-PSFMessage "Failed to query Defender XDR incidents due to insufficient permissions (HTTP $httpStatus). Ensure the account has SecurityIncident.Read.All: $_" -Tag Test -Level Warning
             $params = @{
                 TestId       = '41061'
                 Title        = 'All active Microsoft Defender XDR incidents are triaged and remediated'
@@ -67,6 +69,8 @@ function Test-Assessment-41061 {
             Add-ZtTestResultDetail @params
             return
         }
+        # Any other error (network, throttling, 5xx, etc.) is treated as a transient investigate condition.
+        Write-PSFMessage "Failed to query Defender XDR incidents (HTTP $httpStatus): $_" -Tag Test -Level Warning
         $params = @{
             TestId       = '41061'
             Title        = 'All active Microsoft Defender XDR incidents are triaged and remediated'
@@ -83,6 +87,7 @@ function Test-Assessment-41061 {
     #region Assessment Logic
 
     $failingIncidents = @($response.value | Where-Object { $_ })
+    $totalFailingCount = if ($null -ne $response.'@odata.count') { $response.'@odata.count' } else { $failingIncidents.Count }
 
     # Empty response: no incidents breach any evaluation rule — tenant is compliant.
     $passed = ($failingIncidents.Count -eq 0)
@@ -130,6 +135,7 @@ function Test-Assessment-41061 {
 
     if (-not $passed) {
         $incidentsPortalUrl = 'https://security.microsoft.com/incidents'
+        $hasMoreItems       = $totalFailingCount -gt $incidentResults.Count
 
         $tableRows = ''
         foreach ($row in $incidentResults) {
@@ -142,6 +148,11 @@ function Test-Assessment-41061 {
             $createdMd        = Get-FormattedDate -DateString $row.Created
 
             $tableRows += "| $nameMd | $($row.Severity) | $($row.Status) | $assignedMd | $classificationMd | $determinationMd | $createdMd | $hoursOpenMd | ❌ Fail |`n"
+        }
+
+        if ($hasMoreItems) {
+            $remaining  = $totalFailingCount - $incidentResults.Count
+            $tableRows += "`n... and $remaining more. [Defender XDR > Incidents & alerts > Incidents]($incidentsPortalUrl)`n"
         }
 
         $formatTemplate = @'
