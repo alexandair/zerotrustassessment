@@ -103,21 +103,30 @@ function Test-Assessment-41020 {
     }
 
     $healthIssues = @($healthIssues)
-    $now          = [datetime]::UtcNow
-    $staleDays = 7
+    $now          = ([datetimeoffset](Get-Date)).ToUniversalTime()
+    $staleDays    = 7
 
     # Classify each open issue against the 7-day review SLA.
     # Stale: age > 7 days AND lastModifiedDateTime also > 7 days old (no evidence of active work).
     # In remediation: age > 7 days AND lastModifiedDateTime within the last 7 days (active work evident).
     $classifiedIssues = foreach ($issue in $healthIssues) {
-        if ($issue.createdDateTime) {
-            $created = [datetime]$issue.createdDateTime
+        $created = [datetimeoffset]::MinValue
+        if ($issue.createdDateTime -and [datetimeoffset]::TryParse($issue.createdDateTime, [ref]$created)) {
+            # DateTimeOffset preserves the instant represented by Graph's UTC timestamp.
         } else {
-            # Missing creation timestamp — treat conservatively: assume older than the SLA.
-            Write-PSFMessage "Issue '$($issue.displayName)' has no createdDateTime; classifying conservatively." -Tag Test -Level Warning
+            # Missing or malformed creation timestamp — treat conservatively: assume older than the SLA.
+            Write-PSFMessage "Issue '$($issue.displayName)' has no valid createdDateTime; classifying conservatively." -Tag Test -Level Warning
             $created = $now.AddDays(-($staleDays + 1))
         }
-        $modified     = if ($issue.lastModifiedDateTime) { [datetime]$issue.lastModifiedDateTime } else { $created }
+
+        $modified = [datetimeoffset]::MinValue
+        if (-not ($issue.lastModifiedDateTime -and [datetimeoffset]::TryParse($issue.lastModifiedDateTime, [ref]$modified))) {
+            if ($issue.lastModifiedDateTime) {
+                Write-PSFMessage "Issue '$($issue.displayName)' has an invalid lastModifiedDateTime; classifying conservatively." -Tag Test -Level Warning
+            }
+            $modified = $created
+        }
+
         $ageTotalDays = ($now - $created).TotalDays
         $ageDays      = [int][math]::Floor($ageTotalDays)
 
