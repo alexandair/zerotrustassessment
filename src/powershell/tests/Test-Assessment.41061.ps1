@@ -85,18 +85,14 @@ function Test-Assessment-41061 {
     $failingIncidents = @($response.value | Where-Object { $_ })
 
     # Empty response: no incidents breach any evaluation rule — tenant is compliant.
-    if ($failingIncidents.Count -eq 0) {
-        $params = @{
-            TestId = '41061'
-            Title  = 'All active Microsoft Defender XDR incidents are triaged and remediated'
-            Status = $true
-            Result = '✅ All Microsoft Defender XDR incidents from the last 24 hours are triaged, assigned, and (when closed) classified.'
-        }
-        Add-ZtTestResultDetail @params
-        return
-    }
+    $passed = ($failingIncidents.Count -eq 0)
 
-    $testResultMarkdown = "❌ One or more incidents are unassigned, exceed SLA in ``active`` status, or were closed without classification.`n`n%TestResult%"
+    if ($passed) {
+        $testResultMarkdown = '✅ All Microsoft Defender XDR incidents from the last 24 hours are triaged, assigned, and (when closed) classified.'
+    }
+    else {
+        $testResultMarkdown = "❌ One or more incidents are unassigned, exceed SLA in ``active`` status, or were closed without classification.`n`n%TestResult%"
+    }
 
     # Annotate each returned (failing) incident with per-rule flags for per-cell decoration in the report.
     $incidentResults = foreach ($incident in $failingIncidents) {
@@ -131,22 +127,23 @@ function Test-Assessment-41061 {
 
     #region Report Generation
 
-    $incidentsPortalUrl = 'https://security.microsoft.com/incidents'
+    if (-not $passed) {
+        $incidentsPortalUrl = 'https://security.microsoft.com/incidents'
 
-    $tableRows = ''
-    foreach ($row in $incidentResults) {
-        $nameMd           = if ($row.IncidentWebUrl) { "[$(Get-SafeMarkdown $row.DisplayName)]($($row.IncidentWebUrl))" } else { Get-SafeMarkdown $row.DisplayName }
-        # Decorate the specific cell that triggered failure.
-        $assignedMd       = if ($row.FailUnassigned)  { '❌ —' } elseif ($row.AssignedTo -eq '—') { '—' } else { Get-SafeMarkdown $row.AssignedTo }
-        $hoursOpenMd      = if ($row.FailSla)          { "❌ $($row.HoursOpen)" } else { $row.HoursOpen }
-        $classificationMd = if ($row.FailClassification -and $row.Classification -eq 'unknown') { '❌ unknown' } else { $row.Classification }
-        $determinationMd  = if ($row.FailClassification -and $row.Determination  -eq 'unknown') { '❌ unknown' } else { $row.Determination }
-        $createdMd        = Get-FormattedDate -DateString $row.Created
+        $tableRows = ''
+        foreach ($row in $incidentResults) {
+            $nameMd           = if ($row.IncidentWebUrl) { "[$(Get-SafeMarkdown $row.DisplayName)]($($row.IncidentWebUrl))" } else { Get-SafeMarkdown $row.DisplayName }
+            # Decorate the specific cell that triggered failure.
+            $assignedMd       = if ($row.FailUnassigned)  { '❌ —' } elseif ($row.AssignedTo -eq '—') { '—' } else { Get-SafeMarkdown $row.AssignedTo }
+            $hoursOpenMd      = if ($row.FailSla)          { "❌ $($row.HoursOpen)" } else { $row.HoursOpen }
+            $classificationMd = if ($row.FailClassification -and $row.Classification -eq 'unknown') { '❌ unknown' } else { $row.Classification }
+            $determinationMd  = if ($row.FailClassification -and $row.Determination  -eq 'unknown') { '❌ unknown' } else { $row.Determination }
+            $createdMd        = Get-FormattedDate -DateString $row.Created
 
-        $tableRows += "| $nameMd | $($row.Severity) | $($row.Status) | $assignedMd | $classificationMd | $determinationMd | $createdMd | $hoursOpenMd | ❌ Fail |`n"
-    }
+            $tableRows += "| $nameMd | $($row.Severity) | $($row.Status) | $assignedMd | $classificationMd | $determinationMd | $createdMd | $hoursOpenMd | ❌ Fail |`n"
+        }
 
-    $formatTemplate = @'
+        $formatTemplate = @'
 
 
 ## [Defender XDR > Incidents & alerts > Incidents]({0})
@@ -156,15 +153,16 @@ function Test-Assessment-41061 {
 {1}
 '@
 
-    $mdInfo             = $formatTemplate -f $incidentsPortalUrl, $tableRows
-    $testResultMarkdown = $testResultMarkdown -replace '%TestResult%', $mdInfo
+        $mdInfo             = $formatTemplate -f $incidentsPortalUrl, $tableRows
+        $testResultMarkdown = $testResultMarkdown -replace '%TestResult%', $mdInfo
+    }
 
     #endregion Report Generation
 
     $params = @{
         TestId = '41061'
         Title  = 'All active Microsoft Defender XDR incidents are triaged and remediated'
-        Status = $false
+        Status = $passed
         Result = $testResultMarkdown
     }
     Add-ZtTestResultDetail @params
