@@ -58,15 +58,12 @@ function Test-Assessment-41020 {
         # 403 → distinguish SecurityIdentitiesHealth.Read.All not consented (UnknownError) from
         # MDI not licensed or caller denied (any other 403).
         if ($httpStatus -eq 403) {
-            $errorCode = $null
             try {
-                $errStr = $queryError.ToString()
-                if ($errStr -match '(\{"error".*\})') {
-                    $errorCode = ($Matches[1] | ConvertFrom-Json).error.code
-                }
+                $errorCode = ($queryError.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop).error.code
             }
             catch {
-                Write-PSFMessage "Failed to parse 403 error response; treating as MDI not onboarded." -Tag Test -Level VeryVerbose
+                Write-PSFMessage "Failed to parse the 403 response body: $_" -Tag Test -Level VeryVerbose
+                $errorCode = $null
             }
 
             if ($errorCode -eq 'UnknownError') {
@@ -78,10 +75,19 @@ function Test-Assessment-41020 {
                 return
             }
 
-            # Fall through to NotApplicable check below.
+            if ([string]::IsNullOrWhiteSpace($errorCode)) {
+                # Body was unparseable — cannot assume NotApplicable; Investigate to avoid hiding a permission gap.
+                $params.Status       = $false
+                $params.Result       = '⚠️ The check could not produce a definitive verdict. HTTP status: 403, but the Microsoft Graph error code could not be determined. Verify that the assessment service principal has the ``SecurityIdentitiesHealth.Read.All`` permission and re-run the assessment.'
+                $params.CustomStatus = 'Investigate'
+                Add-ZtTestResultDetail @params
+                return
+            }
+
+            # Fall through to NotApplicable check below (definitive non-UnknownError code received).
         }
 
-        # 404 or 403 (non-UnknownError) → MDI not onboarded.
+        # 404 or 403 (definitive non-UnknownError) → MDI not onboarded.
         if ($httpStatus -in (403, 404)) {
             Add-ZtTestResultDetail -SkippedBecause NotApplicable
             return
@@ -104,10 +110,16 @@ function Test-Assessment-41020 {
     # Stale: age > 7 days AND lastModifiedDateTime also > 7 days old (no evidence of active work).
     # In remediation: age > 7 days AND lastModifiedDateTime within the last 7 days (active work evident).
     $classifiedIssues = foreach ($issue in $healthIssues) {
-        $created  = if ($issue.createdDateTime)      { [datetime]$issue.createdDateTime }      else { $now }
-        $modified = if ($issue.lastModifiedDateTime) { [datetime]$issue.lastModifiedDateTime } else { $created }
+        if ($issue.createdDateTime) {
+            $created = [datetime]$issue.createdDateTime
+        } else {
+            # Missing creation timestamp — treat conservatively: assume older than the SLA.
+            Write-PSFMessage "Issue '$($issue.displayName)' has no createdDateTime; classifying conservatively." -Tag Test -Level Warning
+            $created = $now.AddDays(-($staleDays + 1))
+        }
+        $modified     = if ($issue.lastModifiedDateTime) { [datetime]$issue.lastModifiedDateTime } else { $created }
         $ageTotalDays = ($now - $created).TotalDays
-        $ageDays     = [int][math]::Floor($ageTotalDays)
+        $ageDays      = [int][math]::Floor($ageTotalDays)
 
         $rowStatus = if ($ageTotalDays -le $staleDays) {
             'OK'
@@ -118,11 +130,12 @@ function Test-Assessment-41020 {
         }
 
         [PSCustomObject]@{
-            Issue     = $issue
-            AgeDays   = $ageDays
-            Created   = $created
-            Modified  = $modified
-            RowStatus = $rowStatus
+            Issue         = $issue
+            AgeDays       = $ageDays
+            AgeTotalDays  = $ageTotalDays
+            Created       = $created
+            Modified      = $modified
+            RowStatus     = $rowStatus
         }
     }
 
@@ -158,7 +171,7 @@ function Test-Assessment-41020 {
     }
 
     if ($issuesForTable.Count -gt 0) {
-        $sortedIssues  = @($issuesForTable | Sort-Object AgeDays -Descending)
+        $sortedIssues  = @($issuesForTable | Sort-Object AgeTotalDays -Descending)
         $maxDisplay    = 10
         $totalCount    = $sortedIssues.Count
         $displayIssues = if ($totalCount -gt $maxDisplay) { $sortedIssues | Select-Object -First $maxDisplay } else { $sortedIssues }
