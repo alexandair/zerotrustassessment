@@ -32,19 +32,27 @@ function Test-Assessment-41061 {
     Write-PSFMessage '🟦 Start' -Tag Test -Level VeryVerbose
     $activity = 'Checking Microsoft Defender XDR incident triage and remediation'
 
-    $windowStart    = (Get-Date).AddHours(-24).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-    $incidentFilter = "createdDateTime ge $windowStart"
+    $now          = Get-Date
+    $windowStart  = $now.AddHours(-24).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $slaThreshold = $now.AddHours(-4).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+
+    # Server-side OData filter encoding all three evaluation rules — only failing incidents are returned.
+    # Rule (a): unassigned and not a merged redirect.
+    # Rule (b): high-severity, still active, older than 4 h (le = created before the SLA threshold).
+    # Rule (c): resolved but missing a meaningful classification or determination.
+    $incidentFilter = "createdDateTime ge $windowStart and " +
+                      "((assignedTo eq null and status ne 'redirected') or " +
+                      "(severity eq 'high' and status eq 'active' and createdDateTime le $slaThreshold) or " +
+                      "(status eq 'resolved' and (classification eq 'unknown' or determination eq 'unknown')))"
     $incidentSelect = 'displayName,severity,status,assignedTo,classification,determination,createdDateTime,incidentWebUrl'
 
-    $allIncidents = $null
-
-    Write-ZtProgress -Activity $activity -Status 'Querying Microsoft Defender XDR incidents from the last 24 hours'
+    Write-ZtProgress -Activity $activity -Status 'Querying failing Microsoft Defender XDR incidents from the last 24 hours'
 
     try {
-        # Q1: List all incidents created in the last 24 hours with assignment, classification, and determination.
-        # Prefer: include-unknown-enum-members is required so that awaitingAction (set exclusively by
-        # Defender Experts) is returned as its real string rather than collapsing to unknownFutureValue.
-        $allIncidents = Invoke-ZtGraphRequest -RelativeUri 'security/incidents' -ApiVersion beta -Filter $incidentFilter -Select $incidentSelect -Headers @{ Prefer = 'include-unknown-enum-members' } -ErrorAction Stop
+        # Q1: Retrieve up to 10 incidents that breach at least one triage/remediation rule.
+        # -DisablePaging prevents auto-following of nextLink so $top=10 is respected as a hard cap.
+        # Prefer: include-unknown-enum-members is required so that awaitingAction is returned as its real string.
+        $response = Invoke-ZtGraphRequest -RelativeUri 'security/incidents' -ApiVersion beta -Filter $incidentFilter -Select $incidentSelect -Top 10 -Headers @{ Prefer = 'include-unknown-enum-members' } -ErrorAction Stop -DisablePaging
     }
     catch {
         $httpStatus = Get-ZtHttpStatusCode -ErrorRecord $_
@@ -74,101 +82,68 @@ function Test-Assessment-41061 {
 
     #region Assessment Logic
 
-    $allIncidents = @($allIncidents)
+    $failingIncidents = @($response.value | Where-Object { $_ })
 
-    # No incidents in the last 24 hours — cannot distinguish healthy-zero from unlicensed or not-onboarded.
-    if ($allIncidents.Count -eq 0) {
+    # Empty response: no incidents breach any evaluation rule — tenant is compliant.
+    if ($failingIncidents.Count -eq 0) {
         $params = @{
-            TestId       = '41061'
-            Title        = 'All active Microsoft Defender XDR incidents are triaged and remediated'
-            Status       = $false
-            Result       = '⚠️ No incidents were returned for the last 24 hours; verify Defender XDR is licensed and producing incidents.'
-            CustomStatus = 'Investigate'
+            TestId = '41061'
+            Title  = 'All active Microsoft Defender XDR incidents are triaged and remediated'
+            Status = $true
+            Result = '✅ All Microsoft Defender XDR incidents from the last 24 hours are triaged, assigned, and (when closed) classified.'
         }
         Add-ZtTestResultDetail @params
         return
     }
 
-    $now = Get-Date
+    $testResultMarkdown = "❌ One or more incidents are unassigned, exceed SLA in ``active`` status, or were closed without classification.`n`n%TestResult%"
 
-    $incidentResults = foreach ($incident in $allIncidents) {
-        $createdAt  = $incident.createdDateTime
-        $hoursOpen  = [math]::Round(($now - $createdAt).TotalHours, 1)
+    # Annotate each returned (failing) incident with per-rule flags for per-cell decoration in the report.
+    $incidentResults = foreach ($incident in $failingIncidents) {
+        $hoursOpen  = [math]::Round(($now - [datetime]$incident.createdDateTime).TotalHours, 1)
         $isAssigned = -not [string]::IsNullOrWhiteSpace($incident.assignedTo)
 
-        # Condition (a): unassigned, excluding redirected incidents — a redirected duplicate is
-        # assignedTo:null by design; the surviving incident in redirectIncidentId carries the assignment.
+        # Condition (a): unassigned and not a merged redirect.
         $failUnassigned = (-not $isAssigned) -and ($incident.status -ne 'redirected')
-
-        # Condition (b): high-severity incident still active beyond the 4-hour SLA.
-        # Non-high-severity active incidents are not SLA-checked and pass this condition by default.
+        # Condition (b): high-severity active incident past the 4-hour SLA.
         $failSla = $incident.severity -eq 'high' -and $incident.status -eq 'active' -and $hoursOpen -gt 4
-
-        # Condition (c): resolved incident closed without a meaningful classification or determination.
+        # Condition (c): resolved without a meaningful classification or determination.
         $failClassification = $incident.status -eq 'resolved' -and ($incident.classification -eq 'unknown' -or $incident.determination -eq 'unknown')
 
-        $rowResult = if ($failUnassigned -or $failSla -or $failClassification) { 'Fail' } else { 'Pass' }
-
         [PSCustomObject]@{
-            DisplayName       = $incident.displayName
-            Severity          = $incident.severity
-            Status            = $incident.status
-            AssignedTo        = if ($isAssigned) { $incident.assignedTo } else { '—' }
-            Classification    = $incident.classification
-            Determination     = $incident.determination
-            Created           = $incident.createdDateTime
-            HoursOpen         = $hoursOpen
-            IncidentWebUrl    = $incident.incidentWebUrl
-            RowResult         = $rowResult
-            FailUnassigned    = $failUnassigned
-            FailSla           = $failSla
+            DisplayName        = $incident.displayName
+            Severity           = $incident.severity
+            Status             = $incident.status
+            AssignedTo         = if ($isAssigned) { $incident.assignedTo } else { '—' }
+            Classification     = $incident.classification
+            Determination      = $incident.determination
+            Created            = $incident.createdDateTime
+            HoursOpen          = $hoursOpen
+            IncidentWebUrl     = $incident.incidentWebUrl
+            FailUnassigned     = $failUnassigned
+            FailSla            = $failSla
             FailClassification = $failClassification
         }
     }
     $incidentResults = @($incidentResults)
-
-    $failItems = @($incidentResults | Where-Object { $_.RowResult -eq 'Fail' })
-    $passed   = $failItems.Count -eq 0
-
-    if ($passed) {
-        $testResultMarkdown = "✅ All Microsoft Defender XDR incidents from the last 24 hours are triaged, assigned, and (when closed) classified.`n`n%TestResult%"
-    }
-    else {
-        $testResultMarkdown = "❌ One or more incidents are unassigned, exceed SLA in ``active`` status, or were closed without classification.`n`n%TestResult%"
-    }
 
     #endregion Assessment Logic
 
     #region Report Generation
 
     $incidentsPortalUrl = 'https://security.microsoft.com/incidents'
-    $maxDisplay         = 10
-
-    # Sort Fail rows first, then by hours open descending to surface the most neglected incidents.
-    $sortedResults  = @($incidentResults | Sort-Object -Property RowResult, @{ Expression = { $_.HoursOpen }; Descending = $true })
-    $totalCount     = $sortedResults.Count
-    $displayResults = @($sortedResults | Select-Object -First $maxDisplay)
-    $isTruncated    = $totalCount -gt $maxDisplay
 
     $tableRows = ''
-    foreach ($row in $displayResults) {
+    foreach ($row in $incidentResults) {
         $nameMd           = if ($row.IncidentWebUrl) { "[$(Get-SafeMarkdown $row.DisplayName)]($($row.IncidentWebUrl))" } else { Get-SafeMarkdown $row.DisplayName }
-        # Decorate the specific cell that caused failure so the user knows exactly why the row failed.
-        $assignedMd       = if ($row.FailUnassigned)                                              { '❌ —' }
-                            elseif ($row.AssignedTo -eq '—')                                     { '—' }
-                            else                                                                   { Get-SafeMarkdown $row.AssignedTo }
-        $hoursOpenMd      = if ($row.FailSla)                                                     { "❌ $($row.HoursOpen)" } else { $row.HoursOpen }
-        $classificationMd = if ($row.FailClassification -and $row.Classification -eq 'unknown')   { '❌ unknown' } else { $row.Classification }
-        $determinationMd  = if ($row.FailClassification -and $row.Determination  -eq 'unknown')   { '❌ unknown' } else { $row.Determination }
+        # Decorate the specific cell that triggered failure.
+        $assignedMd       = if ($row.FailUnassigned)  { '❌ —' } elseif ($row.AssignedTo -eq '—') { '—' } else { Get-SafeMarkdown $row.AssignedTo }
+        $hoursOpenMd      = if ($row.FailSla)          { "❌ $($row.HoursOpen)" } else { $row.HoursOpen }
+        $classificationMd = if ($row.FailClassification -and $row.Classification -eq 'unknown') { '❌ unknown' } else { $row.Classification }
+        $determinationMd  = if ($row.FailClassification -and $row.Determination  -eq 'unknown') { '❌ unknown' } else { $row.Determination }
         $createdMd        = Get-FormattedDate -DateString $row.Created
-        $resultMd         = if ($row.RowResult -eq 'Fail') { '❌ Fail' } else { '✅ Pass' }
 
-        $tableRows += "| $nameMd | $($row.Severity) | $($row.Status) | $assignedMd | $classificationMd | $determinationMd | $createdMd | $hoursOpenMd | $resultMd |`n"
-    }
-
-    if ($isTruncated) {
-        $remaining  = $totalCount - $maxDisplay
-        $tableRows += "`n... and $remaining more. [Defender XDR > Incidents & alerts > Incidents]($incidentsPortalUrl)`n"
+        $tableRows += "| $nameMd | $($row.Severity) | $($row.Status) | $assignedMd | $classificationMd | $determinationMd | $createdMd | $hoursOpenMd | ❌ Fail |`n"
     }
 
     $formatTemplate = @'
@@ -189,7 +164,7 @@ function Test-Assessment-41061 {
     $params = @{
         TestId = '41061'
         Title  = 'All active Microsoft Defender XDR incidents are triaged and remediated'
-        Status = $passed
+        Status = $false
         Result = $testResultMarkdown
     }
     Add-ZtTestResultDetail @params
