@@ -15,7 +15,7 @@
       Pass        – EDR in block mode is enabled.
       Fail        – EDR in block mode is disabled or the Secure Score control is ignored.
       Investigate – The control profile or Secure Score snapshot could not be located.
-      Skipped     – Microsoft Graph returned HTTP 401 or 403 (insufficient permissions).
+      Investigate – Microsoft Graph returned HTTP 401 or 403 (insufficient permissions).
 
 .NOTES
     Test ID: 41059
