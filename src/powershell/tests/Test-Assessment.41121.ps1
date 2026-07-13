@@ -256,7 +256,7 @@ function Test-Assessment-41121 {
             $s1Rows += "| Informational | $($row.Severity) | $alertCell | $serviceCell | $assignedCell | $($row.AgeDisplay) | $incidentCell |`n"
         }
 
-        foreach ($row in $acknowledgedItems) {
+        foreach ($row in ($acknowledgedItems | Select-Object -First $maxBandRows)) {
             $alertCell    = if ($row.AlertWebUrl) { "[$(Get-SafeMarkdown $row.Title)]($($row.AlertWebUrl))" } else { Get-SafeMarkdown $row.Title }
             $serviceCell  = if (-not [string]::IsNullOrEmpty($row.ServiceSource)) { $row.ServiceSource } else { '—' }
             $assignedCell = if ([string]::IsNullOrWhiteSpace($row.AssignedTo)) { '—' } else { Get-SafeMarkdown $row.AssignedTo }
