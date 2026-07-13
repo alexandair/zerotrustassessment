@@ -69,6 +69,7 @@ function Test-Assessment-41059 {
 
     # Q2 – Retrieve the most recent Secure Score snapshot (only if Q1 succeeded).
     $latestSecureScore = $null
+    $errorMsgQ2        = $null
 
     if ($null -ne $controlProfile) {
         Write-ZtProgress -Activity $activity -Status 'Retrieving latest Microsoft Secure Score'
@@ -77,7 +78,8 @@ function Test-Assessment-41059 {
             $latestSecureScore = $scoreResponse.value | Select-Object -First 1
         }
         catch {
-            Write-PSFMessage "Failed to retrieve Secure Score snapshot: $_" -Level Warning
+            $errorMsgQ2 = $_
+            Write-PSFMessage "Failed to retrieve Secure Score snapshot: $errorMsgQ2" -Level Warning
         }
     }
 
@@ -117,9 +119,15 @@ function Test-Assessment-41059 {
     $profileTitle = $controlProfile.title
     $maxScore     = $controlProfile.maxScore
 
-    # ── Investigate: Q2 returned no snapshot ──
-    if ($null -eq $latestSecureScore) {
-        $testResultMarkdown = '⚠️ The EDR in block mode control profile exists but the current Microsoft Secure Score snapshot could not be retrieved.'
+    # ── Investigate: Q2 failed or returned no snapshot ──
+    if ($null -ne $errorMsgQ2 -or $null -eq $latestSecureScore) {
+        if ($null -ne $errorMsgQ2) {
+            $investigateReason = 'Microsoft Graph returned an unexpected error retrieving the latest Secure Score snapshot. Re-run the assessment in 5–10 minutes.'
+        }
+        else {
+            $investigateReason = 'The EDR in block mode Secure Score control or latest Secure Score snapshot could not be located.'
+        }
+        $testResultMarkdown = "⚠️ $investigateReason"
         $customStatus       = 'Investigate'
 
         $params = @{
