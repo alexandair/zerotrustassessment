@@ -47,7 +47,7 @@ function Test-Assessment-41121 {
     Write-ZtProgress -Activity $activity -Status 'Querying open Defender XDR alerts'
     try {
         $openAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion beta `
-            -Filter "status eq 'new' or status eq 'inProgress'" -Top 500 `
+            -Filter "status eq 'new' or status eq 'inProgress'" -Top 500 -DisablePaging `
             -Headers $preferHeaders -ErrorAction Stop
     }
     catch {
@@ -75,7 +75,7 @@ function Test-Assessment-41121 {
     Write-ZtProgress -Activity $activity -Status 'Querying recently resolved Defender XDR alerts'
     try {
         $resolvedAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion beta `
-            -Filter "status eq 'resolved' and lastUpdateDateTime ge $resolvedCutoff" -Top 500 `
+            -Filter "status eq 'resolved' and lastUpdateDateTime ge $resolvedCutoff" -Top 500 -DisablePaging `
             -Headers $preferHeaders -ErrorAction Stop
     }
     catch {
@@ -248,7 +248,7 @@ function Test-Assessment-41121 {
             $s1Rows += "`n_... and $impMore more Important alerts. [View in Defender XDR Alerts]($alertsPortalUrl)_`n`n"
         }
 
-        foreach ($row in ($informationalItems | Select-Object -First $maxBandRows)) {
+        foreach ($row in $informationalItems) {
             $alertCell    = if ($row.AlertWebUrl) { "[$(Get-SafeMarkdown $row.Title)]($($row.AlertWebUrl))" } else { Get-SafeMarkdown $row.Title }
             $serviceCell  = if (-not [string]::IsNullOrEmpty($row.ServiceSource)) { $row.ServiceSource } else { '—' }
             $assignedCell = if ([string]::IsNullOrWhiteSpace($row.AssignedTo)) { '—' } else { Get-SafeMarkdown $row.AssignedTo }
@@ -256,7 +256,7 @@ function Test-Assessment-41121 {
             $s1Rows += "| Informational | $($row.Severity) | $alertCell | $serviceCell | $assignedCell | $($row.AgeDisplay) | $incidentCell |`n"
         }
 
-        foreach ($row in ($acknowledgedItems | Select-Object -First $maxBandRows)) {
+        foreach ($row in $acknowledgedItems) {
             $alertCell    = if ($row.AlertWebUrl) { "[$(Get-SafeMarkdown $row.Title)]($($row.AlertWebUrl))" } else { Get-SafeMarkdown $row.Title }
             $serviceCell  = if (-not [string]::IsNullOrEmpty($row.ServiceSource)) { $row.ServiceSource } else { '—' }
             $assignedCell = if ([string]::IsNullOrWhiteSpace($row.AssignedTo)) { '—' } else { Get-SafeMarkdown $row.AssignedTo }
