@@ -76,7 +76,7 @@ function Test-Assessment-41121 {
     try {
         $resolvedAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion v1.0 `
             -Filter "status eq 'resolved' and lastUpdateDateTime ge $resolvedCutoff" -Top 500 `
-            -Headers $preferHeaders -DisablePaging -ErrorAction Stop
+            -Headers $preferHeaders -ErrorAction Stop
     }
     catch {
         $httpStatus = Get-ZtHttpStatusCode -ErrorRecord $_
