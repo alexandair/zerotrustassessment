@@ -46,7 +46,7 @@ function Test-Assessment-41121 {
     # serviceSource filter is deliberately omitted so results include every onboarded service.
     Write-ZtProgress -Activity $activity -Status 'Querying open Defender XDR alerts'
     try {
-        $openAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion v1.0 `
+        $openAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion beta `
             -Filter "status eq 'new' or status eq 'inProgress'" -Top 500 `
             -Headers $preferHeaders -ErrorAction Stop
     }
@@ -74,7 +74,7 @@ function Test-Assessment-41121 {
     # Q2: Read recently resolved alerts (informational throughput context; does not affect Pass/Fail).
     Write-ZtProgress -Activity $activity -Status 'Querying recently resolved Defender XDR alerts'
     try {
-        $resolvedAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion v1.0 `
+        $resolvedAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion beta `
             -Filter "status eq 'resolved' and lastUpdateDateTime ge $resolvedCutoff" -Top 500 `
             -Headers $preferHeaders -ErrorAction Stop
     }
