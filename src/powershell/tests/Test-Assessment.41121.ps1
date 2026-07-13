@@ -101,8 +101,9 @@ function Test-Assessment-41121 {
     #endregion Data Collection
 
     #region Assessment Logic
-    $openAlerts     = @($openAlerts)
-    $resolvedAlerts = @($resolvedAlerts)
+    # -DisablePaging causes Invoke-ZtGraphRequest to return the raw response envelope; unwrap .value.
+    $openAlerts     = @($openAlerts.value)
+    $resolvedAlerts = @($resolvedAlerts.value)
 
     # Disambiguate empty results: both empty = licensed but onboarding cannot be confirmed.
     if ($openAlerts.Count -eq 0 -and $resolvedAlerts.Count -eq 0) {
