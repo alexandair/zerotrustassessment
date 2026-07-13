@@ -139,9 +139,15 @@ function Test-Assessment-41022 {
                     -ErrorAction Stop)
         }
         catch {
-            # Cannot confirm any historical alert -> treat as not deployed.
-            Write-PSFMessage "Test-Assessment-41022: SKIPPED — MDI existence probe failed; treating as not deployed. $_" -Tag Test -Level VeryVerbose
-            Add-ZtTestResultDetail -SkippedBecause NotApplicable
+            # Q1 already succeeded, so access and onboarding are confirmed. A probe failure here is
+            # therefore unexpected (transient fault or an unusual Graph response), not evidence that
+            # MDI is absent — surface it for investigation instead of silently skipping the check.
+            $probeError = $_
+            Write-PSFMessage "Test-Assessment-41022: INVESTIGATE — MDI existence probe failed after a successful Q1: $probeError" -Tag Test -Level Warning
+            Add-ZtTestResultDetail -TestId '41022' `
+                -Title $title `
+                -Status $false -CustomStatus 'Investigate' `
+                -Result ("⚠️ Microsoft Defender for Identity returned no alerts in the last $lookbackDays days, and the follow-up check for any historical alert failed unexpectedly. This is likely transient — re-run the test. Error: " + $probeError.Exception.Message)
             return
         }
 
@@ -206,12 +212,12 @@ function Test-Assessment-41022 {
 
     $formatTemplate = @'
 
-{0}| Total Alerts (last 30 days) | Classified Alerts | Classification Ratio | Stale Unclassified Alerts | Status |
+{0}| Total Alerts (last {1} days) | Classified Alerts | Classification Ratio | Stale Unclassified Alerts | Status |
 | --------------------------: | ----------------: | :------------------- | ------------------------: | :----- |
-| {1} | {2} | {3} | {4} | {5} |
+| {2} | {3} | {4} | {5} | {6} |
 '@
 
-    $mdInfo = $formatTemplate -f $preTableLines, $totalAlerts, $classifiedCount, $ratioDisplay, $staleCount, $statusDisplay
+    $mdInfo = $formatTemplate -f $preTableLines, $lookbackDays, $totalAlerts, $classifiedCount, $ratioDisplay, $staleCount, $statusDisplay
 
     $testResultMarkdown = $testResultMarkdown -replace '%TestResult%', $mdInfo
     #endregion Report Generation

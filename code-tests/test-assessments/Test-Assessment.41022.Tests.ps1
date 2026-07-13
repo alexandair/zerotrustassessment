@@ -227,6 +227,30 @@ Describe "Test-Assessment-41022" {
         }
     }
 
+    Context "When Q1 succeeds with zero alerts but the historical existence probe fails" {
+        It "Should return Investigate (not silently skip)" {
+            Mock Invoke-ZtGraphRequest {
+                if ($Filter -match 'createdDateTime') { return @() }
+                # existence probe fails unexpectedly after a successful Q1
+                throw "503 Service Unavailable"
+            }
+            $script:capturedResult = $null
+            Mock Add-ZtTestResultDetail {
+                param($TestId, $Title, $Status, $Result, $CustomStatus, $SkippedBecause)
+                $script:capturedResult = $Result
+                "## Scenario: Investigate — probe failed`n`n$Result`n" | Add-Content $script:outputFile
+            }
+
+            Test-Assessment-41022
+
+            Should -Invoke Add-ZtTestResultDetail -Times 1 -Exactly -ParameterFilter {
+                $Status -eq $false -and $CustomStatus -eq 'Investigate'
+            }
+            $script:capturedResult | Should -Match 'failed unexpectedly'
+            $script:capturedResult | Should -Match 'Service Unavailable'
+        }
+    }
+
     Context "When the alerts query returns HTTP 401 (unauthorized)" {
         It "Should return Investigate prompting a permission check" {
             Mock Invoke-ZtGraphRequest { throw "401 Unauthorized" }
