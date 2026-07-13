@@ -117,7 +117,7 @@ function Test-Assessment-41121 {
         return
     }
 
-    $now              = [DateTime]::UtcNow
+    $now              = Get-Date
     $severityRank     = @{ high = 0; medium = 1; low = 2; informational = 3 }
     $passed           = $true
     $customStatus     = $null
