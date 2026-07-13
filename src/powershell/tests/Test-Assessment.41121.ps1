@@ -248,7 +248,7 @@ function Test-Assessment-41121 {
             $s1Rows += "`n_... and $impMore more Important alerts. [View in Defender XDR Alerts]($alertsPortalUrl)_`n`n"
         }
 
-        foreach ($row in $informationalItems) {
+        foreach ($row in ($informationalItems | Select-Object -First $maxBandRows)) {
             $alertCell    = if ($row.AlertWebUrl) { "[$(Get-SafeMarkdown $row.Title)]($($row.AlertWebUrl))" } else { Get-SafeMarkdown $row.Title }
             $serviceCell  = if (-not [string]::IsNullOrEmpty($row.ServiceSource)) { $row.ServiceSource } else { '—' }
             $assignedCell = if ([string]::IsNullOrWhiteSpace($row.AssignedTo)) { '—' } else { Get-SafeMarkdown $row.AssignedTo }
