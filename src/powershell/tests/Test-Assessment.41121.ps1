@@ -48,7 +48,7 @@ function Test-Assessment-41121 {
     try {
         $openAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion v1.0 `
             -Filter "status eq 'new' or status eq 'inProgress'" -Top 500 `
-            -Headers $preferHeaders -DisablePaging -ErrorAction Stop
+            -Headers $preferHeaders -ErrorAction Stop
     }
     catch {
         $httpStatus = Get-ZtHttpStatusCode -ErrorRecord $_
