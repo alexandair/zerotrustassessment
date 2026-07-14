@@ -58,7 +58,7 @@ function Invoke-ZtGraphRequest {
 		[Parameter(Mandatory = $false)]
 		[ValidateSet('v1.0', 'beta')]
 		[string] $ApiVersion = 'v1.0',
-		# HTTP method. POST is restricted to read/query endpoints.
+		# HTTP method. POST is intended for read/query endpoints.
 		[Parameter(Mandatory = $false)]
 		[ValidateSet('GET', 'POST')]
 		[string] $Method = 'GET',
