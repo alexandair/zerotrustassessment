@@ -129,14 +129,17 @@ function Test-Assessment-41022 {
     if ($totalAlerts -eq 0) {
         $historicalAlerts = @()
         try {
-            $historicalAlerts = @(Invoke-ZtGraphRequest `
-                    -RelativeUri 'security/alerts_v2' `
-                    -Filter "serviceSource eq 'microsoftDefenderForIdentity'" `
-                    -Select 'id' `
-                    -Top 1 `
-                    -DisablePaging `
-                    -ApiVersion beta `
-                    -ErrorAction Stop)
+            # -DisablePaging returns the raw Graph response wrapper (not the results array), so the
+            # actual alert(s) live under .value. Unwrap it before counting.
+            $probeResponse = Invoke-ZtGraphRequest `
+                -RelativeUri 'security/alerts_v2' `
+                -Filter "serviceSource eq 'microsoftDefenderForIdentity'" `
+                -Select 'id' `
+                -Top 1 `
+                -DisablePaging `
+                -ApiVersion beta `
+                -ErrorAction Stop
+            $historicalAlerts = @($probeResponse.value)
         }
         catch {
             # Q1 already succeeded, so access and onboarding are confirmed. A probe failure here is
