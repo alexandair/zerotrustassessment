@@ -93,6 +93,25 @@ Describe 'Invoke-ZtGraphRequest POST support' {
 		$script:requests[1].Body | Should -BeNullOrEmpty
 		$script:requests[1].PageIndex | Should -Be 1
 	}
+
+	It 'uses the session-resolved Graph endpoint for GET batch requests' {
+		$script:__ZtSession = [pscustomobject]@{ GraphBaseUri = $null }
+		Mock Get-MgContext { [pscustomobject]@{ Environment = 'Global' } }
+		Mock Get-MgEnvironment { [pscustomobject]@{ GraphEndpoint = 'https://graph.microsoft.com/' } }
+		Mock Invoke-ZtGraphRequestCache {
+			param($Method, $Uri, $Body)
+			$script:requests.Add(@{ Method = $Method; Uri = $Uri; Body = $Body })
+			[pscustomobject]@{ responses = @() }
+		}
+
+		Invoke-ZtGraphRequest -RelativeUri @('users', 'groups') | Out-Null
+
+		$script:requests | Should -HaveCount 1
+		$script:requests[0].Method | Should -Be 'POST'
+		$script:requests[0].Uri.AbsoluteUri | Should -Be 'https://graph.microsoft.com/v1.0/$batch'
+		Should -Invoke Get-MgContext -Times 1 -Exactly
+		Should -Invoke Get-MgEnvironment -Times 1 -Exactly
+	}
 }
 
 Describe 'Invoke-ZtGraphRequestCache non-GET output handling' {

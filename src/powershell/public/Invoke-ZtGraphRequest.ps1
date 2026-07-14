@@ -320,7 +320,8 @@ function Invoke-ZtGraphRequest {
 			return
 		}
 
-		$uriQueryEndpoint = [System.UriBuilder]::new([IO.Path]::Combine($GraphBaseUri.AbsoluteUri, $ApiVersion, '$batch'))
+		$resolvedGraphBaseUri = Resolve-GraphBaseUri
+		$uriQueryEndpoint = [System.UriBuilder]::new([IO.Path]::Combine($resolvedGraphBaseUri.AbsoluteUri, $ApiVersion, '$batch'))
 		for ($iRequest = 0; $iRequest -lt $batchRequests.Count; $iRequest += $BatchSize) {
 			$indexEnd = [System.Math]::Min($iRequest + $BatchSize - 1, $batchRequests.Count - 1)
 			$jsonRequests = New-Object psobject -Property @{ requests = $batchRequests[$iRequest..$indexEnd] } | ConvertTo-Json -Depth 5
