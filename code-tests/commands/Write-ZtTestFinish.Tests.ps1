@@ -75,7 +75,7 @@
 		Mock Get-PSFConfigValue {
 			50
 		} -ParameterFilter {
-			$FullName -eq 'ZeroTrustAssessment.Tests.Statistics.MaxMessageCount'
+			$FullName -eq 'ZeroTrustAssessment.Tests.Statistics.MessageCountSoftCap'
 		}
 
 		Mock Write-ZtTestStatistics {}
@@ -106,7 +106,7 @@
 			$testResult.Messages.Message | Should -Not -Contain 'baseline-message-1'
 
 			Should -Invoke Get-PSFConfigValue -Times 1 -Exactly -ParameterFilter {
-				$FullName -eq 'ZeroTrustAssessment.Tests.Statistics.MaxMessageCount'
+				$FullName -eq 'ZeroTrustAssessment.Tests.Statistics.MessageCountSoftCap'
 			}
 			Should -Invoke Write-ZtTestStatistics -Times 1 -Exactly -ParameterFilter {
 				$Result -eq $testResult
@@ -248,7 +248,7 @@
 			Mock Get-PSFConfigValue {
 				1
 			} -ParameterFilter {
-				$FullName -eq 'ZeroTrustAssessment.Tests.Statistics.MaxMessageCount'
+				$FullName -eq 'ZeroTrustAssessment.Tests.Statistics.MessageCountSoftCap'
 			}
 
 			$test = New-DummyZtTest -TestId '99906' -Title 'Message Limit Test'

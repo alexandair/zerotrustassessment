@@ -97,12 +97,13 @@
 		catch {
 			throw
 		}
+		finally {
+			# Reset marker in an assured way, to prevent confusion about the current test being executed
+			$script:__ztCurrentTest = $null
+		}
 
 		$result.End = Get-Date
 		$result.Duration = $result.End - $result.Start
-
-		# Reset marker in an assured way, to prevent confusion about the current test being executed
-		$script:__ztCurrentTest = $null
 
 		Write-PSFMessage -Message "Processing test '{0}' - Concluded" -StringValues $Test.TestID -Target $Test -Tag end
 	}

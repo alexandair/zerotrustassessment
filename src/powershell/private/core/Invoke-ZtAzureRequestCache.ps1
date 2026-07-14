@@ -53,9 +53,10 @@ function Invoke-ZtAzureRequestCache {
 	if ($cacheBlocked) { $DisableCache = $true }
 	$isGet = -not $AzParams.ContainsKey('Method') -or $AzParams['Method'] -eq 'GET'
 	$cachedResult = $script:__ZtSession.AzureCache.Value[$CacheKey]
+	$isCached = $cachedResult -or $script:__ZtSession.AzureCache.Value.ContainsKey($CacheKey)
 
 	# Check cache for GET requests
-	if (-not $cacheBlocked -and -not $DisableCache -and $isGet -and $cachedResult) {
+	if (-not $cacheBlocked -and -not $DisableCache -and $isGet -and $isCached) {
 		Write-PSFMessage "Using Azure cache: $($CacheKey)" -Level Debug
 
 		if ($FullResponse) {

@@ -49,7 +49,7 @@
 	)
 	process {
 		$Result.Messages = Get-PSFMessage -Runspace ([runspace]::DefaultRunspace.InstanceId) | Where-Object { $_ -notin $previousMessages }
-		$limit = Get-PSFConfigValue -FullName 'ZeroTrustAssessment.Tests.Statistics.MaxMessageCount'
+		$limit = Get-PSFConfigValue -FullName 'ZeroTrustAssessment.Tests.Statistics.MessageCountSoftCap'
 		if ($Result.Messages.Count -gt $limit) {
 			$Result.Messages = $Result.Messages | Select-Object Timestamp, Level, Message, Tags, Runspace
 		}

@@ -96,7 +96,7 @@
 			$global:msgSoFar = @{}
 		}
 		$process = {
-			if (-not $global:msgSoFar[$_.TestID]) {
+			if (-not $global:msgSoFar.ContainsKey($_.TestID)) {
 				$global:msgSoFar.Clear()
 				$global:msgSoFar[$_.TestID] = Get-PSFMessage -Runspace ([runspace]::DefaultRunspace.InstanceId)
 			}
@@ -124,8 +124,22 @@
 
 			# Let's fail this
 			$result.End = Get-Date
+			# In Case this failed before it ever started (e.g.: Test Command not found), ensure we have at least the correct data types
+			if (-not $result.Start) {
+				$result.Start = $result.End
+			}
 			$result.Duration = $result.End - $result.Start
 
+			if ($result.TimedOut) {
+				<#
+				The system supports per-Item timeouts.
+				Taking that into account for a future feature update.
+				The per-Item timeout is a TimeSpanParameter, not a TimeSpan, and thus can be $null when not specified.
+				#>
+				$timeout = $__PSF_Worker.Timeout
+				if ($__PSF_Agent.CurrentItem.Timeout) { $timeout = $__PSF_Agent.CurrentItem.Timeout }
+				Set-ZtTimedOutResult -Result $result -Test $this -Timeout $timeout
+			}
 			$null = Write-ZtTestError -Test $this -Result $result -ErrorRecord $_
 			Write-PSFMessage -Message "Processing test '{0}' - Concluded" -StringValues $this.TestID -Target $this -Tag end
 			$null = Write-ZtTestFinish -Result $result -PreviousMessages $global:msgSoFar[$this.TestID] -Test $this -LogsPath $logsPath

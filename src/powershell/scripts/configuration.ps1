@@ -17,7 +17,7 @@ Set-PSFConfig -Module ZeroTrustAssessment -Name 'Tests.Timeout' -Value '1h' -Ini
 Set-PSFConfig -Module ZeroTrustAssessment -Name 'Tests.TimeoutType' -Value 'Idle' -Validation rstimeout -Initialize -Description 'How the timeout for test execution is measured: Idle = "Since last activity", Start = "Since the Test was started"'
 Set-PSFConfig -Module ZeroTrustAssessment -Name 'Tests.RetryCount' -Value 0 -Validation integerpositive -Initialize -Description 'How many times a failed test should be reattempted.'
 Set-PSFConfig -Module ZeroTrustAssessment -Name 'Tests.RetryTimeout' -Value $false -Validation bool -Initialize -Description 'Whether a timedout test should be reattempted.'
-Set-PSFConfig -Module ZeroTrustAssessment -Name 'Tests.Statistics.MaxMessageCount' -Value 1024 -Validation integerpositive -Initialize -Description 'How many log messages will be stored in the test statistics. If the number is higher than specified, the message objects will be simplified to help preserve memory.'
+Set-PSFConfig -Module ZeroTrustAssessment -Name 'Tests.Statistics.MessageCountSoftCap' -Value 1024 -Validation integerpositive -Initialize -Description 'How many log messages will be stored in the test statistics. If the number is higher than specified, the message objects will be simplified to help preserve memory.'
 
 # Caching Settings
 Set-PSFConfig -Module ZeroTrustAssessment -Name 'Azure.DisableCache' -Value $false -Initialize -Validation bool -Description 'Global toggle to disable azure caching. Caching improves performance of some requests, but potentially consumes a lot of memory, which might lead to swapping and cratering code performance.'
