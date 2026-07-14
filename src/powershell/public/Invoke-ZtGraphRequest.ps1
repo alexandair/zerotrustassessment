@@ -12,7 +12,7 @@
     * Specify consistency level as a parameter
     * Additional custom headers via the Headers parameter
 
-	POST is supported only for read/query Graph endpoints. POST requests require a JSON object body,
+	POST is intended for read/query Graph endpoints. POST requests require a JSON object body,
 	are not cached or batched, and can target only one endpoint per invocation.
 
     :::info
