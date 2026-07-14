@@ -124,6 +124,7 @@ The consent prompt is only displayed if the Graph PowerShell app does not alread
 - SecurityIdentitiesHealth.Read.All
 - SecurityIdentitiesSensors.Read.All
 - SecurityIncident.Read.All
+- ThreatHunting.Read.All
 - UserAuthenticationMethod.Read.All
 
 Run the following command to connect to the services and consent to the permissions using a Global Administrator account. We recommend **explicitly specifying the tenant** you want to assess:
