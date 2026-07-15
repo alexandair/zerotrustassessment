@@ -117,7 +117,6 @@ function Test-Assessment-41059 {
     }
 
     $profileTitle = $controlProfile.title
-    $maxScore     = $controlProfile.maxScore
 
     # ── Investigate: Q2 failed or returned no snapshot ──
     if ($null -ne $errorMsgQ2 -or $null -eq $latestSecureScore) {
@@ -149,9 +148,13 @@ function Test-Assessment-41059 {
             Select-Object -First 1
     }
 
-    # ── Investigate: profile exists but snapshot has no scored entry for this control ──
-    if ($null -eq $controlScoreEntry) {
-        $testResultMarkdown = "⚠️ The EDR in block mode control profile (**$controlId**) exists but the latest Secure Score snapshot has no scored entry for this control."
+    # ── Investigate: profile exists but snapshot has no scored entry for this control,
+    #    or score/maxScore is null (would produce a false Pass via PowerShell $null coercion) ──
+    $score    = $controlScoreEntry.score
+    $maxScore = $controlProfile.maxScore
+
+    if ($null -eq $controlScoreEntry -or $null -eq $score -or $null -eq $maxScore) {
+        $testResultMarkdown = '⚠️ The EDR in block mode Secure Score control or latest Secure Score snapshot could not be located.'
         $customStatus       = 'Investigate'
 
         $params = @{
@@ -168,8 +171,6 @@ function Test-Assessment-41059 {
     # ── Determine ignored state from the most recent controlStateUpdates entry ──
     $latestStateUpdate = @($controlProfile.controlStateUpdates | Sort-Object { if ($_.updatedDateTime) { [datetime]$_.updatedDateTime } else { [datetime]::MinValue } } -Descending) | Select-Object -First 1
     $isIgnored         = $latestStateUpdate -and $latestStateUpdate.state -eq 'Ignored'
-
-    $score = $controlScoreEntry.score
 
     if (($score -ge $maxScore) -and (-not $isIgnored)) {
         $passed             = $true
