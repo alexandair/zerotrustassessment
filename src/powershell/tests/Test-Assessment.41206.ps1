@@ -192,8 +192,14 @@ function Test-Assessment-41206 {
 '@
 
     $tableRows      = ''
+    $maxDisplay     = 10
     $statusPriority = @{ Fail = 0; Investigate = 1; Pass = 2 }
     $displayResults = @($workspaceResults | Sort-Object { $statusPriority[$_.RowStatus] }, SubscriptionName, WorkspaceName)
+    $hasMoreItems   = $false
+    if ($workspaceResults.Count -gt $maxDisplay) {
+        $displayResults = @($displayResults | Select-Object -First $maxDisplay)
+        $hasMoreItems   = $true
+    }
 
     foreach ($result in $displayResults) {
         $subLink       = "https://portal.azure.com/#resource/subscriptions/$($result.SubscriptionId)"
@@ -209,7 +215,12 @@ function Test-Assessment-41206 {
             'Fail'        { '❌ Fail' }
             'Investigate' { '⚠️ Investigate' }
         }
-        $tableRows    += "| $subMd | $workspaceMd | $($result.WorkbookCount) | $namesMd | $statusDisplay |`n"
+        $tableRows += "| $subMd | $workspaceMd | $($result.WorkbookCount) | $namesMd | $statusDisplay |`n"
+    }
+
+    if ($hasMoreItems) {
+        $remainingCount = $workspaceResults.Count - $maxDisplay
+        $tableRows += "`n... and $remainingCount more. [View all in Microsoft Sentinel]($portalSentinelLink)`n"
     }
 
     $mdInfo             = $formatTemplate -f $tableTitle, $portalSentinelLink, $tableRows
