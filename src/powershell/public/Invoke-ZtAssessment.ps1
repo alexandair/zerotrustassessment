@@ -180,6 +180,7 @@ function Invoke-ZtAssessment {
 		# Maximum time a single test is allowed to run. Defaults to 60 minutes. Set to 0 to disable.
 		# For Data pillar tests, timeout is best-effort because some external modules/remoting
 		# operations cannot be deterministically hard-stopped from within the current process.
+		[PSFramework.Utility.ScriptTransformationAttribute('ZeroTrustAssessment.TimeSpanParameter', [PSFramework.Parameter.TimeSpanParameter])]
 		[PSFTimeSpan]
 		$TestTimeout = (Get-PSFConfigValue -FullName 'ZeroTrustAssessment.Tests.Timeout' -Fallback ([timespan]::FromMinutes(60))),
 
