@@ -91,13 +91,10 @@ function Test-Assessment-41206 {
             }
         }
         else {
-            # Full visibility, no workspace has Sentinel onboarded.
-            $params = @{
-                TestId = '41206'
-                Title  = 'At least one workbook is deployed in every Microsoft Sentinel workspace for visualization and operational reporting'
-                Status = $false
-                Result = '❌ No Sentinel-onboarded workspace was found in the tenant. Ensure Microsoft Sentinel is onboarded on at least one Log Analytics workspace and re-run the assessment.'
-            }
+            # Spec: no Sentinel-onboarded workspaces with full visibility — Skipped.
+            Write-PSFMessage 'No Sentinel-onboarded workspaces found — skipping Sentinel workbooks check.' -Tag Test -Level VeryVerbose
+            Add-ZtTestResultDetail -SkippedBecause NotApplicable
+            return
         }
         Add-ZtTestResultDetail @params
         return
