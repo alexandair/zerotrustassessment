@@ -121,7 +121,6 @@ function Test-Assessment-41034 {
 
     $passed         = $true
     $hasInvestigate = $false
-    $hasAllowedList = $false
 
     $policyRows = [System.Collections.Generic.List[PSCustomObject]]::new()
 
@@ -134,25 +133,11 @@ function Test-Assessment-41034 {
             # Orphan rule: enabled rule references a policy not found in Get-HostedContentFilterPolicy → Investigate
             $hasInvestigate = $true
             $policyRows.Add([PSCustomObject]@{
-                Identity                         = $identity
-                IsDefault                        = $false
-                IsOrphan                         = $true
-                RuleName                         = $ruleName
-                FailReasons                      = @()
-                RowResult                        = 'Investigate'
-                SpamAction                       = $null
-                HighConfidenceSpamAction         = $null
-                PhishSpamAction                  = $null
-                HighConfidencePhishAction        = $null
-                BulkSpamAction                   = $null
-                BulkThreshold                    = $null
-                MarkAsSpamBulkMail               = $null
-                PhishZapEnabled                  = $null
-                SpamZapEnabled                   = $null
-                InlineSafetyTipsEnabled          = $null
-                AllowedSendersCount              = $null
-                AllowedSenderDomainsCount        = $null
-                HighConfidencePhishQuarantineTag = $null
+                Identity  = $identity
+                IsDefault = $false
+                IsOrphan  = $true
+                RuleName  = $ruleName
+                RowResult = 'Investigate'
             })
             continue
         }
@@ -180,9 +165,6 @@ function Test-Assessment-41034 {
         $rowFails = $failReasons.Count -gt 0
         if ($rowFails) {
             $passed = $false
-            if ($allowedSendersCount -gt 0 -or $allowedSenderDomainsCount -gt 0) {
-                $hasAllowedList = $true
-            }
         }
 
         $rowResult       = if ($rowFails) { 'Fail' } else { 'Pass' }
@@ -212,51 +194,18 @@ function Test-Assessment-41034 {
         })
     }
 
-    # Unapplied policies: custom policies that exist but have no enabled rule — informational only, do not affect verdict
-    foreach ($policy in $allPolicies) {
-        if ($inScopeIdentities.Contains($policy.Identity)) { continue }
-        $allowedSendersCount       = ($policy.AllowedSenders | Measure-Object).Count
-        $allowedSenderDomainsCount = ($policy.AllowedSenderDomains | Measure-Object).Count
-        $policyRows.Add([PSCustomObject]@{
-            Identity                         = $policy.Identity
-            IsDefault                        = ($policy.IsDefault -eq $true)
-            IsOrphan                         = $false
-            RuleName                         = ''
-            FailReasons                      = @()
-            RowResult                        = 'Not applied'
-            SpamAction                       = $policy.SpamAction
-            HighConfidenceSpamAction         = $policy.HighConfidenceSpamAction
-            PhishSpamAction                  = $policy.PhishSpamAction
-            HighConfidencePhishAction        = $policy.HighConfidencePhishAction
-            BulkSpamAction                   = $policy.BulkSpamAction
-            BulkThreshold                    = $policy.BulkThreshold
-            MarkAsSpamBulkMail               = $policy.MarkAsSpamBulkMail
-            PhishZapEnabled                  = $policy.PhishZapEnabled
-            SpamZapEnabled                   = $policy.SpamZapEnabled
-            InlineSafetyTipsEnabled          = $policy.InlineSafetyTipsEnabled
-            AllowedSendersCount              = $allowedSendersCount
-            AllowedSenderDomainsCount        = $allowedSenderDomainsCount
-            HighConfidencePhishQuarantineTag = $policy.HighConfidencePhishQuarantineTag
-        })
-    }
-
     # Aggregate verdict: Fail > Investigate > Pass
     $customStatus = $null
     if (-not $passed) {
-        if ($hasAllowedList) {
-            $testResultMarkdown = "❌ One or more anti-spam policies contain entries in the per-policy allowed-sender or allowed-sender-domain list. These entries bypass spam, spoofing, and most phishing filtering for every message from those senders or domains. Operational exceptions for legitimate vendors belong in the **[Tenant Allow/Block List](https://security.microsoft.com/tenantAllowBlockList)**, where they can be reviewed and expired.`n`n%TestResult%"
-        }
-        else {
-            $testResultMarkdown = "❌ One or more anti-spam policies allow high-confidence phishing to be delivered (action is not Quarantine), set a permissive bulk threshold (> 6), or have a required protection setting disabled. Review the table below and bring each policy into alignment with the Standard-floor baseline.`n`n%TestResult%"
-        }
+        $testResultMarkdown = "❌ One or more anti-spam policies allow high-confidence phishing to be delivered (action is not Quarantine), set a permissive bulk threshold, or contain entries in the per-policy allowed-sender list that bypass spam, spoofing, and most phishing filtering for those senders. Operational exceptions for legitimate vendors belong in the **[Tenant Allow/Block List](https://security.microsoft.com/tenantAllowBlockList)**, where they can be reviewed and expired.`n`n%TestResult%"
     }
     elseif ($hasInvestigate) {
         $passed       = $false
         $customStatus = 'Investigate'
-        $testResultMarkdown = "⚠️ An enabled rule references a policy that does not exist in ``Get-HostedContentFilterPolicy``; manual review is required.`n`n%TestResult%"
+        $testResultMarkdown = "⚠️ An enabled rule references a policy that does not exist in **Get-HostedContentFilterPolicy**; manual review is required.`n`n%TestResult%"
     }
     else {
-        $testResultMarkdown = "✅ Anti-spam policies route high-confidence phishing to admin-only quarantine, use a compliant bulk threshold (≤ 6), and contain no per-policy allow-sender entries that bypass filtering.`n`n%TestResult%"
+        $testResultMarkdown = "✅ Anti-spam policies route high-confidence phishing to admin-only quarantine, use a strict bulk threshold, and contain no per-policy allow-sender entries that bypass filtering.`n`n%TestResult%"
     }
     #endregion Assessment Logic
 
@@ -265,8 +214,8 @@ function Test-Assessment-41034 {
     $maxDisplay = 10
     $totalCount = $policyRows.Count
 
-    # Sort: worst verdict first (Fail > Investigate > Pass > Not applied), then alphabetically by identity
-    $statusPriority = @{ Fail = 0; Investigate = 1; Pass = 2; 'Not applied' = 3 }
+    # Sort: worst verdict first (Fail > Investigate > Pass), then alphabetically by identity
+    $statusPriority = @{ Fail = 0; Investigate = 1; Pass = 2 }
     $sortedRows  = @($policyRows | Sort-Object { $statusPriority[$_.RowResult] }, Identity)
     $displayRows = @($sortedRows | Select-Object -First $maxDisplay)
 
@@ -279,8 +228,6 @@ function Test-Assessment-41034 {
         # Scope column
         $scopeDisplay = if ($row.IsOrphan -or $row.RuleName) {
             "Applied via rule $(Get-SafeMarkdown $row.RuleName)"
-        } elseif ($row.RowResult -eq 'Not applied') {
-            'Not applied'
         } else {
             'Default (catch-all)'
         }
@@ -309,7 +256,6 @@ function Test-Assessment-41034 {
         # Result column with named reasons per spec
         $resultDisplay = switch ($row.RowResult) {
             'Pass'        { '✅ Pass' }
-            'Not applied' { 'Not applied' }
             'Investigate' { '⚠️ Investigate (orphan rule reference)' }
             'Fail'        { "❌ Fail ($($row.FailReasons -join '; '))" }
         }
