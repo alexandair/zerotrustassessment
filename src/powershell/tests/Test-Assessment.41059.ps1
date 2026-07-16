@@ -190,16 +190,13 @@ function Test-Assessment-41059 {
     $rowStatus      = if ($passed) { '✅ Pass' } else { '❌ Fail' }
     $lastModified   = if ($controlProfile.lastModifiedDateTime) { Get-FormattedDate -DateString $controlProfile.lastModifiedDateTime } else { '—' }
 
-    $mdFailLink = ''
-    if (-not $passed) {
-        $mdFailLink = "`n## [Defender XDR > Secure Score > Recommendations]($secureScoreUrl)`n"
-    }
-
     $tableRows = "| $(Get-SafeMarkdown $profileTitle) | $controlId | $score | $maxScore | $ignoredDisplay | $lastModified | $rowStatus |`n"
 
     $mdTable = @"
 
-$mdFailLink
+
+### [Microsoft Secure Score]($secureScoreUrl)
+
 | Control title | Control id | Score | Max score | Ignored | Last modified | Status |
 | :------------ | :--------- | :---- | :-------- | :------ | :------------ | :----- |
 $tableRows
