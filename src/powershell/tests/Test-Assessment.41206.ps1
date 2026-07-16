@@ -1,6 +1,13 @@
 <#
 .SYNOPSIS
     Checks that at least one Microsoft Sentinel workbook is deployed in every Sentinel-onboarded Log Analytics workspace.
+
+.NOTES
+    Test ID: 41206
+    Workshop Task: SECOPS_099
+    Pillar: SecOps
+    Category: Security information and event management
+    Required API: Azure Resource Manager (management.azure.com)
 #>
 function Test-Assessment-41206 {
     [ZtTest(
@@ -82,13 +89,17 @@ function Test-Assessment-41206 {
                 Result       = '⚠️ One or more Log Analytics workspaces returned insufficient permissions when checking Sentinel onboarding state. No Sentinel-onboarded workspace was confirmed among accessible workspaces — the overall state cannot be determined. Ensure Microsoft Sentinel Reader is granted on all workspaces and re-run the assessment.'
                 CustomStatus = 'Investigate'
             }
-            Add-ZtTestResultDetail @params
         }
         else {
-            # Spec: no Sentinel-onboarded workspaces with full visibility — Skipped.
-            Write-PSFMessage 'No Sentinel-onboarded workspaces found — skipping Sentinel workbooks check.' -Tag Test -Level VeryVerbose
-            Add-ZtTestResultDetail -SkippedBecause NotApplicable
+            # Full visibility, no workspace has Sentinel onboarded.
+            $params = @{
+                TestId = '41206'
+                Title  = 'At least one workbook is deployed in every Microsoft Sentinel workspace for visualization and operational reporting'
+                Status = $false
+                Result = '❌ No Sentinel-onboarded workspace was found in the tenant. Ensure Microsoft Sentinel is onboarded on at least one Log Analytics workspace and re-run the assessment.'
+            }
         }
+        Add-ZtTestResultDetail @params
         return
     }
 
@@ -155,7 +166,6 @@ function Test-Assessment-41206 {
     }
     $workspaceResults = @($workspaceResults)
 
-    $passedItems      = @($workspaceResults | Where-Object { $_.RowStatus -eq 'Pass' })
     $investigateItems = @($workspaceResults | Where-Object { $_.RowStatus -eq 'Investigate' })
     $failedItems      = @($workspaceResults | Where-Object { $_.RowStatus -eq 'Fail' })
 
@@ -208,7 +218,7 @@ function Test-Assessment-41206 {
         $subMd         = "[$(Get-SafeMarkdown $result.SubscriptionName)]($subLink)"
         $workspaceMd   = "[$(Get-SafeMarkdown $result.WorkspaceName)]($workbooksLink)"
         $namesMd       = if ($result.WorkbookNames.Count -gt 0) {
-            ($result.WorkbookNames | ForEach-Object { Get-SafeMarkdown $_ }) -join '<br>'
+            ($result.WorkbookNames | ForEach-Object { Get-SafeMarkdown $_ }) -join ', '
         } else { '—' }
         $statusDisplay = switch ($result.RowStatus) {
             'Pass'        { '✅ Pass' }
