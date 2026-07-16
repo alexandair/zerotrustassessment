@@ -56,7 +56,7 @@ function Test-Assessment-41034 {
             TestId       = '41034'
             Title        = 'Anti-spam (hosted content filter) policies are configured with recommended thresholds and actions'
             Status       = $false
-            Result       = '⚠️ ``Get-HostedContentFilterPolicy`` returned no results. The Default policy is always present in Exchange Online; an empty result indicates an Exchange Online permission or connectivity issue rather than absence of protection — verify access and re-run.'
+            Result       = '⚠️ **Get-HostedContentFilterPolicy** returned no results. The Default policy is always present in Exchange Online; an empty result indicates an Exchange Online permission or connectivity issue rather than absence of protection — verify access and re-run.'
             CustomStatus = 'Investigate'
         }
         Add-ZtTestResultDetail @params
@@ -274,12 +274,14 @@ function Test-Assessment-41034 {
 
     $formatTemplate = @'
 {0}
+## [Anti-spam policy settings]({2})
+
 | Policy | Scope | Filter actions | Bulk & ZAP | Allow lists & quarantine tag | Result |
 | :----- | :---- | :------------- | :--------- | :--------------------------- | :----- |
 {1}
 '@
 
-    $mdInfo             = $formatTemplate -f $preTableLines, $tableRows
+    $mdInfo             = $formatTemplate -f $preTableLines, $tableRows, $portalUrl
     $testResultMarkdown = $testResultMarkdown -replace '%TestResult%', $mdInfo
     #endregion Report Generation
 
