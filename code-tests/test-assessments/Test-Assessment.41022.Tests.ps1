@@ -192,8 +192,8 @@ Describe "Test-Assessment-41022" {
         It "Should return Investigate" {
             Mock Invoke-ZtGraphRequest {
                 if ($Filter -match 'createdDateTime') { return @() }
-                # existence probe -> one historical alert
-                return @( (New-MdiAlert 'old1' 'truePositive' 'resolved' 400) )
+                # existence probe uses -DisablePaging -> return the raw wrapper with one alert under .value
+                return [PSCustomObject]@{ value = @( (New-MdiAlert 'old1' 'truePositive' 'resolved' 400) ) }
             }
             $script:capturedResult = $null
             Mock Add-ZtTestResultDetail {
@@ -213,7 +213,11 @@ Describe "Test-Assessment-41022" {
 
     Context "When MDI has never generated an alert" {
         It "Should be Skipped as NotApplicable" {
-            Mock Invoke-ZtGraphRequest { return @() }
+            Mock Invoke-ZtGraphRequest {
+                if ($Filter -match 'createdDateTime') { return @() }
+                # existence probe uses -DisablePaging -> raw wrapper with an empty .value
+                return [PSCustomObject]@{ value = @() }
+            }
             Mock Add-ZtTestResultDetail {
                 param($TestId, $Title, $Status, $Result, $CustomStatus, $SkippedBecause)
                 "## Scenario: Skipped — MDI not deployed`n" | Add-Content $script:outputFile
