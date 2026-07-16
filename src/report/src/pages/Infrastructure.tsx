@@ -14,7 +14,7 @@ export default function Infrastructure() {
                 <CardHeader>
                     <CardTitle className="mb-3">Assessment results</CardTitle>
                     <CardDescription>
-                        The results below are based on Microsoft Defender for Cloud recommendations identified in the scanned environment.
+                        The results below are based on Microsoft Defender for Cloud recommendations identified in the scanned environment. You must apply the following `tag` to each Azure subscription which you want to be included in the scan: `ZeroTrustAssessment:Infrastructure`
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="gap-4 px-4 pb-4 pt-1">

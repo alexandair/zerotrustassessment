@@ -40,6 +40,8 @@
         (microsoft.security/securescores/securescorecontrols
          + microsoft.security/assessments
          + microsoft.security/regulatorycompliancestandards/.../regulatorycomplianceassessments)
+    MDC Query Reference: https://github.com/microsoft/ESA/blob/main/src/MDC.kql
+    MCSB Query Reference: https://github.com/microsoft/ESA/blob/main/src/MCSB.kql
 #>
 
 function Test-Assessment-50001 {
@@ -122,6 +124,38 @@ function Test-Assessment-50001 {
     if (-not $azContext) {
         Write-PSFMessage 'Not connected to Azure.' -Level Warning
         Add-ZtTestResultDetail -SkippedBecause NotConnectedAzure
+        return
+    }
+
+    $taggedSubscriptionQuery = @'
+resourcecontainers
+| where type == 'microsoft.resources/subscriptions'
+| where tags['ZeroTrustAssessment'] =~ 'Infrastructure'
+| project subscriptionId, subscriptionName = name
+'@
+
+    Write-ZtProgress -Activity $activity -Status 'Finding subscriptions tagged for Infrastructure scan'
+    $taggedSubscriptions = @()
+    try {
+        $taggedSubscriptions = @(Invoke-ZtAzureResourceGraphRequest -Query $taggedSubscriptionQuery)
+        Write-PSFMessage "Infrastructure tag query returned $($taggedSubscriptions.Count) subscriptions" -Tag Test -Level VeryVerbose
+    }
+    catch {
+        Write-PSFMessage "Infrastructure tag ARG query failed: $($_.Exception.Message)" -Tag Test -Level Warning
+        Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'Unable to query tagged subscriptions for Infrastructure scan. Ensure Azure Resource Graph access is available and subscriptions are tagged with ZeroTrustAssessment:Infrastructure.'
+        return
+    }
+
+    [string[]] $taggedSubscriptionIds = @(
+        $taggedSubscriptions |
+            Select-Object -ExpandProperty subscriptionId |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object -Unique
+    )
+
+    if ($taggedSubscriptionIds.Count -eq 0) {
+        Write-PSFMessage 'No subscriptions found with Infrastructure scan tag.' -Tag Test -Level Verbose
+        Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'No subscriptions are tagged for Infrastructure scan. Apply the tag ZeroTrustAssessment:Infrastructure to each subscription that should be included.'
         return
     }
 
@@ -350,7 +384,7 @@ securityresources
     Write-ZtProgress -Activity $activity -Status 'Querying Azure Resource Graph for secure score recommendations'
     $secureScoreRecs = @()
     try {
-        $secureScoreRecs = @(Invoke-ZtAzureResourceGraphRequest -Query $secureScoreQuery)
+        $secureScoreRecs = @(Invoke-ZtAzureResourceGraphRequest -Query $secureScoreQuery -SubscriptionId $taggedSubscriptionIds)
         Write-PSFMessage "Secure Score query returned $($secureScoreRecs.Count) records" -Tag Test -Level VeryVerbose
     }
     catch {
@@ -360,7 +394,7 @@ securityresources
     Write-ZtProgress -Activity $activity -Status 'Querying Azure Resource Graph for MCSB compliance assessments'
     $mcsbRecs = @()
     try {
-        $mcsbRecs = @(Invoke-ZtAzureResourceGraphRequest -Query $mcsbQuery)
+        $mcsbRecs = @(Invoke-ZtAzureResourceGraphRequest -Query $mcsbQuery -SubscriptionId $taggedSubscriptionIds)
         Write-PSFMessage "MCSB query returned $($mcsbRecs.Count) records" -Tag Test -Level VeryVerbose
     }
     catch {

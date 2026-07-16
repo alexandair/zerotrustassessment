@@ -17,6 +17,10 @@ Connect-ZtAssessment
 Invoke-ZtAssessment
 ```
 
+## Infrastructure Pillar Scope
+
+Infrastructure pillar results are based on Microsoft Defender for Cloud recommendations and only include Azure subscriptions tagged with `ZeroTrustAssessment:Infrastructure`.
+
 ## Quicklinks
 
 * [aka.ms/zerotrust/assessment](https://aka.ms/zerotrust/assessment) → Microsoft Learn docs page for the assessment (includes install guide).
