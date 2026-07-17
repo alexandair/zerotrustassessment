@@ -35,7 +35,7 @@ function Test-Assessment-41045 {
     # Q1: Enumerate all devices from the DeviceInfo advanced hunting table (last 30 days).
     # arg_max(Timestamp, *) deduplicates to the most recent snapshot per DeviceId.
     # serviceSource filter is deliberately omitted; the KQL result covers all onboarded services.
-    $kqlQuery = 'DeviceInfo | summarize arg_max(Timestamp, *) by DeviceId | project DeviceId, DeviceName, OSPlatform, OnboardingStatus, SensorHealthState'
+    $kqlQuery = 'DeviceInfo | summarize arg_max(Timestamp, *) by DeviceId | project DeviceId, DeviceName, OSPlatform, OnboardingStatus, SensorHealthState, LastSeen=Timestamp'
 
     Write-ZtProgress -Activity $activity -Status 'Querying MDE device onboarding status via advanced hunting'
     $devices = $null
