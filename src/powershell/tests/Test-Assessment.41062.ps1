@@ -208,7 +208,7 @@ function Test-Assessment-41062 {
         foreach ($row in $displayAlerts) {
             $titleMd    = if ($row.AlertWebUrl) { "[$(Get-SafeMarkdown $row.Title)]($($row.AlertWebUrl))" } else { Get-SafeMarkdown $row.Title }
             $incidentMd = if ($row.IncidentWebUrl) { "[$($row.IncidentId)]($($row.IncidentWebUrl))" } elseif ($row.IncidentId) { $row.IncidentId } else { '—' }
-            $createdMd  = Get-FormattedDate -DateString $row.Created.ToString()
+            $createdMd  = Get-FormattedDate -DateString $row.Created.ToString('o')
 
             # pendingApproval rows do not use severity in the fail predicate; failed-AIR rows do.
             $severityDisplay = if ($row.FailureType -eq 'FailedAirStale') { "❌ $($row.Severity)" } else { $row.Severity }
