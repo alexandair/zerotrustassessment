@@ -124,6 +124,7 @@ The consent prompt is only displayed if the Graph PowerShell app does not alread
 - SecurityIdentitiesHealth.Read.All
 - SecurityIdentitiesSensors.Read.All
 - SecurityIncident.Read.All
+- ThreatHunting.Read.All
 - UserAuthenticationMethod.Read.All
 
 Run the following command to connect to the services and consent to the permissions using a Global Administrator account. We recommend **explicitly specifying the tenant** you want to assess:
@@ -211,8 +212,8 @@ The most commonly used parameters are described below. All parameters are option
 | `-ExportLog` | Writes the log to a file. |
 | `-ConfigurationFile <path>` | Path to a JSON configuration file. Command-line parameters override values from the file. |
 | `-DisableTelemetry` | Disables telemetry collection (by default only the tenant ID is collected). |
-| `-Timeout <timespan>` | Maximum time to wait for all tests before giving up (default 24 hours). |
-| `-TestTimeout <minutes>` | Maximum time a single test may run (default 60; `0` = disabled). |
+| `-Timeout <timespan>` | Maximum time to wait for all tests before giving up (default 24 hours). Supports humanized input notation, such as `12h` or `3d`. |
+| `-TestTimeout <minutes/timespan>` | Maximum time a single test may run (default 60; `0` = disabled). Supports humanized input notation, such as `30m`, `2h`, or `'2h 15m'`. |
 | `-ExportThrottleLimit <n>` / `-TestThrottleLimit <n>` | Maximum number of parallel data collectors / tests (default 5 each). |
 
 ### Preview pillars (Infrastructure, SecOps, and AI)

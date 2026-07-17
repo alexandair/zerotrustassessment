@@ -121,6 +121,7 @@ Describe 'Invoke-ZtGraphRequestCache non-GET output handling' {
 		function global:Write-PSFMessage { param($Message, $Level, $Tag) }
 		function global:Get-PSFConfigValue { param($FullName) return $false }
 		function global:Invoke-ZtRetry { param($ScriptBlock) & $ScriptBlock }
+		function global:Invoke-MgGraphRequest { param($Method, $Uri, $Headers, $OutputType, $Body) }
 		function global:Get-ExportJsonFilePath { param($Path, $PageIndex) return (Join-Path $TestDrive 'post-response.json') }
 		function global:Set-PSFFileContent { param($Path, $InputObject) }
 

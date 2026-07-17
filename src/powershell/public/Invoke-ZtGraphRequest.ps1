@@ -204,7 +204,7 @@ function Invoke-ZtGraphRequest {
 			$pagingRequestParam.Remove('Method')
 			$pagingRequestParam.Remove('Body')
 			$pageIndex = 1
-			while (Get-ObjectProperty -InputObjects $Results -Property '@odata.nextLink') {
+			while ($Results.'@odata.nextLink') {
 				$Results = Invoke-ZtGraphRequestCache -Method GET -Uri $results.'@odata.nextLink' @pagingRequestParam -PageIndex $pageIndex
 				$pageIndex++
 				Format-Result -Results $Results -RawOutput $DisablePaging
