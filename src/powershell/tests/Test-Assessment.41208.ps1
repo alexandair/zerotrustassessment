@@ -156,7 +156,7 @@ function Test-Assessment-41208 {
             WorkspaceName    = $workspace.WorkspaceName
             ResourceGroup    = $workspace.ResourceGroup
             WorkspaceId      = $workspace.WorkspaceId
-            TotalWatchlists  = if ($null -eq $rawWatchlists) { 0 } else { $activeWatchlists.Count }
+            TotalWatchlists  = if ($null -eq $rawWatchlists) { $null } else { $activeWatchlists.Count }
             ActiveWatchlists = $activeWatchlists   # kept for per-watchlist report rendering
             RowStatus        = $rowStatus
         }
@@ -232,7 +232,8 @@ function Test-Assessment-41208 {
         }
         else {
             # No active watchlists (Fail) or API error (Investigate) — one placeholder row so the workspace appears in the table
-            $tableRows += "| $subMd | $workspaceMd | 0 | — | — | — | — | $statusDisplay |`n"
+            $countMd    = if ($null -eq $result.TotalWatchlists) { '—' } else { $result.TotalWatchlists }
+            $tableRows += "| $subMd | $workspaceMd | $countMd | — | — | — | — | $statusDisplay |`n"
         }
     }
 
