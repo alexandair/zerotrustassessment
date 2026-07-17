@@ -7,40 +7,34 @@
 		. (Join-Path $srcRoot "private/tests/Get-ZtTestResult.ps1")
 		. (Join-Path $srcRoot "private/tests/Write-ZtTestFinish.ps1")
 
-		# Ensure PSFramework message commands exist for message setup/validation.
-		if (-not (Get-Command Write-PSFMessage -ErrorAction SilentlyContinue)) {
-			Import-Module PSFramework -ErrorAction Stop
+		# Use a deterministic in-memory message store instead of PSFramework's runtime store.
+		$script:__MessageStore = @()
+
+		function Clear-PSFMessage {
+			$script:__MessageStore = @()
 		}
 
-		if (-not (Get-Command Clear-PSFMessage -ErrorAction SilentlyContinue)) {
-			$script:__MessageStore = @()
-
-			function Clear-PSFMessage {
-				$script:__MessageStore = @()
+		function Write-PSFMessage {
+			param(
+				$Level,
+				$Message,
+				$Tag
+			)
+			$script:__MessageStore += [PSCustomObject]@{
+				Timestamp = Get-Date
+				Level = $Level
+				Message = $Message
+				Tags = @($Tag)
+				Runspace = [runspace]::DefaultRunspace.InstanceId
 			}
+		}
 
-			function Write-PSFMessage {
-				param(
-					$Level,
-					$Message,
-					$Tag
-				)
-				$script:__MessageStore += [PSCustomObject]@{
-					Timestamp = Get-Date
-					Level = $Level
-					Message = $Message
-					Tags = @($Tag)
-					Runspace = [runspace]::DefaultRunspace.InstanceId
-				}
+		function Get-PSFMessage {
+			param($Runspace)
+			if ($Runspace) {
+				return @($script:__MessageStore | Where-Object Runspace -eq $Runspace)
 			}
-
-			function Get-PSFMessage {
-				param($Runspace)
-				if ($Runspace) {
-					return @($script:__MessageStore | Where-Object Runspace -eq $Runspace)
-				}
-				return @($script:__MessageStore)
-			}
+			return @($script:__MessageStore)
 		}
 
 		function New-DummyZtTest {
