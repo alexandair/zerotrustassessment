@@ -156,46 +156,39 @@ function Test-Assessment-41062 {
         $testResultMarkdown = "❌ One or more endpoint AIR actions are stuck in ``pendingApproval`` or failed, and the malicious artifact remains active on the host.`n`n%TestResult%"
     }
 
-    # Build per-alert result rows with rule-aware cell decoration.
-    # Q1 rows: severity is NOT part of the fail predicate → plain severity; state and hours decorated.
-    # Q2 rows: severity IS part of the fail predicate → severity also decorated.
+    # Build per-alert result rows as plain data and record why the alert failed.
+    # Decoration (emoji + display emphasis) is applied during markdown rendering.
     $alertResults = @()
 
-    $alertResults += foreach ($alert in $pendingApprovalAlerts) {
-        $hoursOpen = [math]::Round(($now - [datetime]$alert.createdDateTime).TotalHours, 1)
-        [PSCustomObject]@{
-            Title                     = $alert.title
-            Severity                  = $alert.severity
-            InvestigationState        = $alert.investigationState
-            IncidentId                = $alert.incidentId
-            IncidentWebUrl            = $alert.incidentWebUrl
-            Created                   = $alert.createdDateTime
-            HoursOpen                 = $hoursOpen
-            ServiceSource             = $alert.serviceSource
-            AlertWebUrl               = $alert.alertWebUrl
-            SeverityDisplay           = $alert.severity
-            InvestigationStateDisplay = "❌ $($alert.investigationState)"
-            HoursOpenDisplay          = "❌ $hoursOpen"
-            StatusDisplay             = '❌ Fail'
-        }
-    }
+    $alertsWithReason = @(
+        @($pendingApprovalAlerts | ForEach-Object {
+            [PSCustomObject]@{
+                Alert       = $_
+                FailureType = 'PendingApprovalStale'
+            }
+        })
+        @($failedAirAlerts | ForEach-Object {
+            [PSCustomObject]@{
+                Alert       = $_
+                FailureType = 'FailedAirStale'
+            }
+        })
+    )
 
-    $alertResults += foreach ($alert in $failedAirAlerts) {
+    $alertResults += foreach ($entry in $alertsWithReason) {
+        $alert = $entry.Alert
         $hoursOpen = [math]::Round(($now - [datetime]$alert.createdDateTime).TotalHours, 1)
         [PSCustomObject]@{
-            Title                     = $alert.title
-            Severity                  = $alert.severity
-            InvestigationState        = $alert.investigationState
-            IncidentId                = $alert.incidentId
-            IncidentWebUrl            = $alert.incidentWebUrl
-            Created                   = $alert.createdDateTime
-            HoursOpen                 = $hoursOpen
-            ServiceSource             = $alert.serviceSource
-            AlertWebUrl               = $alert.alertWebUrl
-            SeverityDisplay           = "❌ $($alert.severity)"
-            InvestigationStateDisplay = "❌ $($alert.investigationState)"
-            HoursOpenDisplay          = "❌ $hoursOpen"
-            StatusDisplay             = '❌ Fail'
+            Title              = $alert.title
+            Severity           = $alert.severity
+            InvestigationState = $alert.investigationState
+            IncidentId         = $alert.incidentId
+            IncidentWebUrl     = $alert.incidentWebUrl
+            Created            = $alert.createdDateTime
+            HoursOpen          = $hoursOpen
+            ServiceSource      = $alert.serviceSource
+            AlertWebUrl        = $alert.alertWebUrl
+            FailureType        = $entry.FailureType
         }
     }
 
@@ -215,7 +208,14 @@ function Test-Assessment-41062 {
             $titleMd    = if ($row.AlertWebUrl) { "[$(Get-SafeMarkdown $row.Title)]($($row.AlertWebUrl))" } else { Get-SafeMarkdown $row.Title }
             $incidentMd = if ($row.IncidentWebUrl) { "[$($row.IncidentId)]($($row.IncidentWebUrl))" } elseif ($row.IncidentId) { $row.IncidentId } else { '—' }
             $createdMd  = Get-FormattedDate -DateString $row.Created.ToString()
-            $tableRows += "| $titleMd | $($row.SeverityDisplay) | $($row.InvestigationStateDisplay) | $incidentMd | $createdMd | $($row.HoursOpenDisplay) | $($row.ServiceSource) | $($row.StatusDisplay) |`n"
+
+            # pendingApproval rows do not use severity in the fail predicate; failed-AIR rows do.
+            $severityDisplay = if ($row.FailureType -eq 'FailedAirStale') { "❌ $($row.Severity)" } else { $row.Severity }
+            $stateDisplay    = "❌ $($row.InvestigationState)"
+            $hoursDisplay    = "❌ $($row.HoursOpen)"
+            $statusDisplay   = '❌ Fail'
+
+            $tableRows += "| $titleMd | $severityDisplay | $stateDisplay | $incidentMd | $createdMd | $hoursDisplay | $($row.ServiceSource) | $statusDisplay |`n"
         }
 
         if ($hasMoreItems) {
