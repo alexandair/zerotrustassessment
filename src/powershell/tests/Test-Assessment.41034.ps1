@@ -108,15 +108,14 @@ function Test-Assessment-41034 {
     # Default policy (IsDefault == True) — always in-scope as the catch-all
     $defaultPolicy = $allPolicies | Where-Object { $_.IsDefault -eq $true } | Select-Object -First 1
 
-    # Collect in-scope policy identities: Default first, then all referenced by enabled rules (deduplicated)
-    $inScopeIdentities = [System.Collections.Generic.List[string]]::new()
+    # Collect in-scope policy identities: Default first, then all referenced by enabled rules (deduplicated).
+    # Use OrdinalIgnoreCase HashSet — Exchange may return different casing between cmdlets.
+    $inScopeIdentities = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     if ($defaultPolicy) {
-        $inScopeIdentities.Add($defaultPolicy.Identity)
+        [void]$inScopeIdentities.Add($defaultPolicy.Identity)
     }
     foreach ($policyName in $rulesForPolicy.Keys) {
-        if (-not $inScopeIdentities.Contains($policyName)) {
-            $inScopeIdentities.Add($policyName)
-        }
+        [void]$inScopeIdentities.Add($policyName)
     }
 
     $passed         = $true
@@ -250,7 +249,7 @@ function Test-Assessment-41034 {
             $bulkZapDisplay    = "Bulk: $($row.BulkThreshold)/6 • MarkBulk: $markBulkDisplay • ZAP: $zapDisplay • SafetyTips: $safetyTipsDisplay"
 
             # Allow lists & quarantine tag: Senders: N • Domains: N • HC-Phish tag: <tag>
-            $allowListsDisplay = "Senders: $($row.AllowedSendersCount) • Domains: $($row.AllowedSenderDomainsCount) • HC-Phish tag: $($row.HighConfidencePhishQuarantineTag)"
+            $allowListsDisplay = "Senders: $($row.AllowedSendersCount) • Domains: $($row.AllowedSenderDomainsCount) • HC-Phish tag: $(Get-SafeMarkdown -Text $row.HighConfidencePhishQuarantineTag)"
         }
 
         # Result column with named reasons per spec
