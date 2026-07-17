@@ -12,6 +12,9 @@
     * Specify consistency level as a parameter
     * Additional custom headers via the Headers parameter
 
+	POST is intended for read/query Graph endpoints. POST requests require a JSON object body,
+	are not cached or batched, and can target only one endpoint per invocation.
+
     :::info
     Note: Batch requests don't support caching.
     :::
@@ -21,6 +24,13 @@
     Invoke-ZtGraphRequest -RelativeUri "users" -Filter "displayName eq 'John Doe'" -Select "displayName" -Top 10
 
     Get all users with a display name of "John Doe" and return the first 10 results.
+
+ .Example
+
+	 $body = @{ Query = 'DeviceProcessEvents | limit 2' } | ConvertTo-Json -Compress
+	 Invoke-ZtGraphRequest -RelativeUri 'security/runHuntingQuery' -Method POST -Body $body
+
+	 Run a Microsoft Defender advanced hunting query. POST is intended only for Graph query endpoints.
 
 #>
 function Invoke-ZtGraphRequest {
@@ -48,6 +58,13 @@ function Invoke-ZtGraphRequest {
 		[Parameter(Mandatory = $false)]
 		[ValidateSet('v1.0', 'beta')]
 		[string] $ApiVersion = 'v1.0',
+		# HTTP method. POST is intended for read/query endpoints.
+		[Parameter(Mandatory = $false)]
+		[ValidateSet('GET', 'POST')]
+		[string] $Method = 'GET',
+		# JSON object request body for POST requests.
+		[Parameter(Mandatory = $false)]
+		[string] $Body,
 		# Specifies consistency level.
 		[Parameter(Mandatory = $false)]
 		[string] $ConsistencyLevel = 'eventual',
@@ -79,30 +96,58 @@ function Invoke-ZtGraphRequest {
 	)
 
 	begin {
-		if (-not $GraphBaseUri) {
-			if (-not $script:__ZtSession.GraphBaseUri) {
-				Write-PSFMessage -Message 'Setting GraphBaseUri to default value from MgContext.'
-				$mgContext = Get-MgContext
-				if (-not $mgContext) {
-					throw 'No Microsoft Graph context found. Please connect to Microsoft Graph using Connect-ZtAssessment.'
-				}
-
-				$script:__ZtSession.GraphBaseUri = (Get-MgEnvironment -Name $mgContext.Environment).GraphEndpoint
-			}
-
-			$GraphBaseUri = $script:__ZtSession.GraphBaseUri
-		}
-
 		$batchRequests = New-Object 'System.Collections.Generic.List[psobject]'
+		$postRelativeUris = New-Object 'System.Collections.Generic.List[string]'
+
+		if ($Method -eq 'GET') {
+			if ($PSBoundParameters.ContainsKey('Body')) {
+				throw [System.ArgumentException]::new('-Body is only supported when -Method POST is specified.', 'Body')
+			}
+		}
+		else {
+			if ([string]::IsNullOrWhiteSpace($Body)) {
+				throw [System.ArgumentException]::new('-Body is required when -Method POST is specified and must be a JSON object.', 'Body')
+			}
+			if (-not (Test-Json -Json $Body -ErrorAction SilentlyContinue)) {
+				throw [System.ArgumentException]::new('-Body must be valid JSON.', 'Body')
+			}
+			try {
+				$bodyObject = $Body | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+			}
+			catch {
+				throw [System.ArgumentException]::new('-Body must be a JSON object.', 'Body', $_.Exception)
+			}
+			if ($bodyObject -isnot [System.Collections.IDictionary]) {
+				throw [System.ArgumentException]::new('-Body must be a JSON object.', 'Body')
+			}
+			if ($DisableBatching) {
+				throw [System.ArgumentException]::new('-DisableBatching cannot be used with -Method POST because POST requests are never batched.', 'DisableBatching')
+			}
+			foreach ($parameterName in 'Select', 'Filter', 'Top') {
+				if ($PSBoundParameters.ContainsKey($parameterName)) {
+					throw [System.ArgumentException]::new("-$parameterName cannot be used with -Method POST.", $parameterName)
+				}
+			}
+			if ($UniqueId.Count -ne 1) {
+				throw [System.ArgumentException]::new('-Method POST supports exactly one resolved endpoint.', 'UniqueId')
+			}
+		}
 
 		$requestHeaders = if ($Headers) { $Headers.Clone() } else { @{} }
 		$requestHeaders['ConsistencyLevel'] = $ConsistencyLevel
+		if ($Method -eq 'POST' -and -not $requestHeaders.ContainsKey('Content-Type')) {
+			$requestHeaders['Content-Type'] = 'application/json'
+		}
 
 		$requestParam = @{
 			Headers = $requestHeaders
 			OutputType = $OutputType
 			DisableCache = $DisableCache
 			OutputFilePath = $OutputFilePath
+			Method = $Method
+		}
+		if ($Method -eq 'POST') {
+			$requestParam['Body'] = $Body
 		}
 
 		#region Utility Functions
@@ -155,90 +200,128 @@ function Invoke-ZtGraphRequest {
 			if ($DisablePaging -or -not $Results) {
 				return
 			}
+			$pagingRequestParam = $RequestParam.Clone()
+			$pagingRequestParam.Remove('Method')
+			$pagingRequestParam.Remove('Body')
 			$pageIndex = 1
 			while ($Results.'@odata.nextLink') {
-				$Results = Invoke-ZtGraphRequestCache -Method GET -Uri $results.'@odata.nextLink' @RequestParam -PageIndex $pageIndex
+				$Results = Invoke-ZtGraphRequestCache -Method GET -Uri $results.'@odata.nextLink' @pagingRequestParam -PageIndex $pageIndex
 				$pageIndex++
 				Format-Result -Results $Results -RawOutput $DisablePaging
+			}
+		}
+
+		function Resolve-GraphBaseUri {
+			if ($GraphBaseUri) {
+				return $GraphBaseUri
+			}
+			if (-not $script:__ZtSession.GraphBaseUri) {
+				Write-PSFMessage -Message 'Setting GraphBaseUri to default value from MgContext.'
+				$mgContext = Get-MgContext
+				if (-not $mgContext) {
+					throw 'No Microsoft Graph context found. Please connect to Microsoft Graph using Connect-ZtAssessment.'
+				}
+
+				$script:__ZtSession.GraphBaseUri = (Get-MgEnvironment -Name $mgContext.Environment).GraphEndpoint
+			}
+
+			return [uri] $script:__ZtSession.GraphBaseUri
+		}
+
+		function Invoke-ResolvedGraphRequest {
+			param(
+				[string[]] $Uris
+			)
+
+			$resolvedGraphBaseUri = Resolve-GraphBaseUri
+			if ($DisableBatching -and ($Uris.Count -gt 1 -or $UniqueId.Count -gt 1)) {
+				Write-Warning ('This command is invoking {0} individual Graph requests. For better performance, remove the -DisableBatching parameter.' -f ($Uris.Count * $UniqueId.Count))
+			}
+			$doBatch = ($Method -eq 'GET') -and -not $DisableBatching -and ($Uris.Count -gt 1 -or $UniqueId.Count -gt 1)
+
+			foreach ($uri in $Uris) {
+				$uriQueryEndpoint = [System.UriBuilder]::new([IO.Path]::Combine($resolvedGraphBaseUri.AbsoluteUri, $ApiVersion, $uri))
+
+				#region Process Uri & Query
+				if ($uriQueryEndpoint.Query) {
+					$finalQueryParameters = ConvertFrom-QueryString -InputStrings $uriQueryEndpoint.Query -AsHashtable
+					if ($QueryParameters) {
+						foreach ($ParameterName in $QueryParameters.Keys) {
+							$finalQueryParameters[$ParameterName] = $QueryParameters[$ParameterName]
+						}
+					}
+				}
+				elseif ($QueryParameters) {
+					$finalQueryParameters = $QueryParameters
+				}
+				else {
+					$finalQueryParameters = @{ }
+				}
+				if ($Select) {
+					$finalQueryParameters['$select'] = $Select -join ','
+				}
+				if ($Filter) {
+					$finalQueryParameters['$filter'] = $Filter
+				}
+				if ($Top) {
+					$finalQueryParameters['$top'] = $Top
+				}
+				$uriQueryEndpoint.Query = ConvertTo-QueryString $finalQueryParameters
+				#endregion Process Uri & Query
+
+				foreach ($id in $UniqueId) {
+					$uriQueryEndpointFinal = New-Object System.UriBuilder -ArgumentList $uriQueryEndpoint.Uri
+					$uriQueryEndpointFinal.Path = ([IO.Path]::Combine($uriQueryEndpointFinal.Path, $id))
+
+					if ($doBatch) {
+						$batchHeaders = if ($Headers) { $Headers.Clone() } else { @{} }
+						$batchHeaders['ConsistencyLevel'] = $ConsistencyLevel
+
+						$request = [PSCustomObject]@{
+							id      = $batchRequests.Count
+							method  = 'GET'
+							url     = $uriQueryEndpointFinal.Uri.AbsoluteUri -replace ('{0}{1}/' -f $resolvedGraphBaseUri.AbsoluteUri, $ApiVersion)
+							headers = $batchHeaders
+						}
+						$batchRequests.Add($request)
+					}
+					else {
+						$results = Invoke-ZtGraphRequestCache -Uri $uriQueryEndpointFinal.Uri.AbsoluteUri @requestParam
+
+						Format-Result -Results $results -RawOutput $DisablePaging
+						Complete-Result -Results $results -DisablePaging $DisablePaging -RequestParam $requestParam
+					}
+				}
 			}
 		}
 		#endregion Utility Functions
 	}
 
 	process {
-		$results = $null
-
-		if ($DisableBatching -and ($RelativeUri.Count -gt 1 -or $UniqueId.Count -gt 1)) {
-			Write-Warning ('This command is invoking {0} individual Graph requests. For better performance, remove the -DisableBatching parameter.' -f ($RelativeUri.Count * $UniqueId.Count))
+		if ($Method -eq 'POST') {
+			foreach ($uri in $RelativeUri) {
+				$postRelativeUris.Add($uri)
+			}
+			return
 		}
-		$doBatch = -not $DisableBatching -and ($RelativeUri.Count -gt 1 -or $UniqueId.Count -gt 1)
 
-		## Process Each RelativeUri
-		foreach ($uri in $RelativeUri) {
-			$uriQueryEndpoint = [System.UriBuilder]::new([IO.Path]::Combine($GraphBaseUri.AbsoluteUri, $ApiVersion, $uri))
-
-			#region Process Uri & Query
-			if ($uriQueryEndpoint.Query) {
-				$finalQueryParameters = ConvertFrom-QueryString -InputStrings $uriQueryEndpoint.Query -AsHashtable
-				if ($QueryParameters) {
-					foreach ($ParameterName in $QueryParameters.Keys) {
-						$finalQueryParameters[$ParameterName] = $QueryParameters[$ParameterName]
-					}
-				}
-			}
-			elseif ($QueryParameters) {
-				$finalQueryParameters = $QueryParameters
-			}
-			else {
-				$finalQueryParameters = @{ }
-			}
-			if ($Select) {
-				$finalQueryParameters['$select'] = $Select -join ','
-			}
-			if ($Filter) {
-				$finalQueryParameters['$filter'] = $Filter
-			}
-			if ($Top) {
-				$finalQueryParameters['$top'] = $Top
-			}
-			$uriQueryEndpoint.Query = ConvertTo-QueryString $finalQueryParameters
-			#endregion Process Uri & Query
-
-			#region Execute individual or queue batch
-			foreach ($id in $UniqueId) {
-				$uriQueryEndpointFinal = New-Object System.UriBuilder -ArgumentList $uriQueryEndpoint.Uri
-				$uriQueryEndpointFinal.Path = ([IO.Path]::Combine($uriQueryEndpointFinal.Path, $id))
-
-				if ($doBatch) {
-					$batchHeaders = if ($Headers) { $Headers.Clone() } else { @{} }
-					$batchHeaders['ConsistencyLevel'] = $ConsistencyLevel
-
-					$request = [PSCustomObject]@{
-						id      = $batchRequests.Count
-						method  = 'GET'
-						url     = $uriQueryEndpointFinal.Uri.AbsoluteUri -replace ('{0}{1}/' -f $GraphBaseUri.AbsoluteUri, $ApiVersion)
-						headers = $batchHeaders
-					}
-					$batchRequests.Add($request)
-				}
-				else {
-
-					$results = Invoke-ZtGraphRequestCache -Method GET -Uri $uriQueryEndpointFinal.Uri.AbsoluteUri @requestParam
-
-					Format-Result -Results $results -RawOutput $DisablePaging
-					Complete-Result -Results $results -DisablePaging $DisablePaging -RequestParam $requestParam
-				}
-			}
-			#endregion Execute individual or queue batch
-		}
+		Invoke-ResolvedGraphRequest -Uris $RelativeUri
 	}
 
 	end {
+		if ($Method -eq 'POST') {
+			if ($postRelativeUris.Count -ne 1) {
+				throw [System.ArgumentException]::new('-Method POST supports exactly one resolved endpoint.', 'RelativeUri')
+			}
+			Invoke-ResolvedGraphRequest -Uris $postRelativeUris.ToArray()
+		}
+
 		if ($batchRequests.Count -lt 1) {
 			return
 		}
 
-		$uriQueryEndpoint = [System.UriBuilder]::new([IO.Path]::Combine($GraphBaseUri.AbsoluteUri, $ApiVersion, '$batch'))
+		$resolvedGraphBaseUri = Resolve-GraphBaseUri
+		$uriQueryEndpoint = [System.UriBuilder]::new([IO.Path]::Combine($resolvedGraphBaseUri.AbsoluteUri, $ApiVersion, '$batch'))
 		for ($iRequest = 0; $iRequest -lt $batchRequests.Count; $iRequest += $BatchSize) {
 			$indexEnd = [System.Math]::Min($iRequest + $BatchSize - 1, $batchRequests.Count - 1)
 			$jsonRequests = New-Object psobject -Property @{ requests = $batchRequests[$iRequest..$indexEnd] } | ConvertTo-Json -Depth 5
