@@ -80,28 +80,37 @@ function Test-Assessment-41045 {
         return
     }
 
-    $unhealthySensorStates = @('Inactive', 'ImpairedCommunications', 'NoSensorData', 'NoSensorDataImpairedCommunications')
+    $outOfScopeOnboardingStatuses = @('Unsupported', 'Insufficient info')
 
-    # Classify each device; first matching rule wins (mirrors spec evaluation logic)
+    # Classify each device; first matching rule wins (mirrors spec evaluation logic).
+    # Only the two documented onboarding statuses are Out of scope. Any other onboarding
+    # status combined with a health state that is not "Active" is conservatively treated
+    # as "Onboarded but unhealthy" (Fail) rather than silently excluded — this covers
+    # known unhealthy states as well as unrecognized/undocumented ones (e.g. Misconfigured).
     $classifiedDevices = foreach ($device in $devices) {
         $onboarding = $device.OnboardingStatus
         $health     = $device.SensorHealthState
 
-        $classification = if ($onboarding -eq 'Can be onboarded') {
+        $classification = if ($onboarding -in $outOfScopeOnboardingStatuses) {
+            'Out of scope'
+        } elseif ($onboarding -eq 'Can be onboarded') {
             'Eligible but not onboarded'
-        } elseif ($onboarding -eq 'Onboarded' -and $health -in $unhealthySensorStates) {
-            'Onboarded but unhealthy'
         } elseif ($onboarding -eq 'Onboarded' -and $health -eq 'Active') {
             'Onboarded and healthy'
+        } elseif ($onboarding -eq 'Onboarded') {
+            'Onboarded but unhealthy'
         } else {
-            'Out of scope'
+            # Unrecognized or missing OnboardingStatus value — do not silently exclude;
+            # flag for investigation rather than assuming Out of scope.
+            'Unrecognized onboarding status'
         }
 
         $rowResult = switch ($classification) {
-            'Eligible but not onboarded' { 'Fail' }
-            'Onboarded but unhealthy'    { 'Fail' }
-            'Onboarded and healthy'      { 'Pass' }
-            default                      { '—' }
+            'Eligible but not onboarded'      { 'Fail' }
+            'Onboarded but unhealthy'         { 'Fail' }
+            'Onboarded and healthy'           { 'Pass' }
+            'Unrecognized onboarding status'  { 'Investigate' }
+            default                           { '—' }
         }
 
         [PSCustomObject]@{
@@ -116,7 +125,9 @@ function Test-Assessment-41045 {
     }
     $classifiedDevices = @($classifiedDevices)
 
-    $passed = (@($classifiedDevices | Where-Object { $_.RowResult -eq 'Fail' }).Count) -eq 0
+    $hasFailures    = (@($classifiedDevices | Where-Object { $_.RowResult -eq 'Fail' }).Count) -gt 0
+    $hasUnrecognized = (@($classifiedDevices | Where-Object { $_.RowResult -eq 'Investigate' }).Count) -gt 0
+    $passed = -not $hasFailures -and -not $hasUnrecognized
     #endregion Assessment Logic
 
     #region Report Generation
@@ -126,10 +137,11 @@ function Test-Assessment-41045 {
 
     # Table order per spec: Onboarded and healthy → Eligible but not onboarded → Onboarded but unhealthy → Out of scope
     $classOrder = @{
-        'Onboarded and healthy'       = 0
-        'Eligible but not onboarded'  = 1
-        'Onboarded but unhealthy'     = 2
-        'Out of scope'                = 3
+        'Onboarded and healthy'          = 0
+        'Eligible but not onboarded'     = 1
+        'Onboarded but unhealthy'        = 2
+        'Unrecognized onboarding status' = 3
+        'Out of scope'                   = 4
     }
     $sortedDevices  = @($classifiedDevices | Sort-Object { if ($classOrder.ContainsKey($_.Classification)) { $classOrder[$_.Classification] } else { 99 } })
     $displayDevices = @($sortedDevices | Select-Object -First $maxDisplay)
@@ -159,6 +171,8 @@ function Test-Assessment-41045 {
 
     if ($passed) {
         $testResultMarkdown = "✅ All Microsoft Defender for Endpoint sensors are onboarded and healthy.`n`n%TestResult%"
+    } elseif ($hasUnrecognized -and -not $hasFailures) {
+        $testResultMarkdown = "⚠️ One or more devices returned an unrecognized onboarding status; verify their Microsoft Defender for Endpoint sensor health manually.`n`n%TestResult%"
     } else {
         $testResultMarkdown = "❌ One or more devices are missing the Microsoft Defender for Endpoint sensor or the sensor is not communicating.`n`n%TestResult%"
     }
@@ -170,6 +184,9 @@ function Test-Assessment-41045 {
         Title  = $testTitle
         Status = $passed
         Result = $testResultMarkdown
+    }
+    if ($hasUnrecognized -and -not $hasFailures) {
+        $params.CustomStatus = 'Investigate'
     }
     Add-ZtTestResultDetail @params
 }
