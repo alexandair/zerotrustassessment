@@ -194,8 +194,8 @@ function Test-Assessment-41208 {
 
 ## [{0}]({1})
 
-| Subscription | Workspace | Watchlist name | Watchlist alias | Provider | Provisioning state | Status |
-| :----------- | :-------- | :------------- | :-------------- | :------- | :----------------- | :----- |
+| Subscription | Workspace | Watchlist count | Watchlist names | Watchlist aliases | Providers | Provisioning states | Status |
+| :----------- | :-------- | :-------------- | :-------------- | :---------------- | :-------- | :------------------ | :----- |
 {2}
 '@
 
@@ -222,17 +222,17 @@ function Test-Assessment-41208 {
         }
 
         if ($result.ActiveWatchlists.Count -gt 0) {
-            foreach ($wl in $result.ActiveWatchlists) {
-                $nameMd  = Get-SafeMarkdown $wl.properties.displayName
-                $aliasMd = Get-SafeMarkdown $wl.properties.watchlistAlias
-                $provMd  = Get-SafeMarkdown $wl.properties.provider
-                $stateMd = if ($wl.properties.provisioningState -eq 'Succeeded') { '✅ Succeeded' } else { "⚠️ $($wl.properties.provisioningState)" }
-                $tableRows += "| $subMd | $workspaceMd | $nameMd | $aliasMd | $provMd | $stateMd | $statusDisplay |`n"
-            }
+            $namesMd   = ($result.ActiveWatchlists | ForEach-Object { Get-SafeMarkdown $_.properties.displayName }) -join ', '
+            $aliasesMd = ($result.ActiveWatchlists | ForEach-Object { Get-SafeMarkdown $_.properties.watchlistAlias }) -join ', '
+            $provsMd   = ($result.ActiveWatchlists | ForEach-Object { Get-SafeMarkdown $_.properties.provider }) -join ', '
+            $statesMd  = ($result.ActiveWatchlists | ForEach-Object {
+                if ($_.properties.provisioningState -eq 'Succeeded') { '✅ Succeeded' } else { "⚠️ $($_.properties.provisioningState)" }
+            }) -join ', '
+            $tableRows += "| $subMd | $workspaceMd | $($result.TotalWatchlists) | $namesMd | $aliasesMd | $provsMd | $statesMd | $statusDisplay |`n"
         }
         else {
             # No active watchlists (Fail) or API error (Investigate) — one placeholder row so the workspace appears in the table
-            $tableRows += "| $subMd | $workspaceMd | — | — | — | — | $statusDisplay |`n"
+            $tableRows += "| $subMd | $workspaceMd | 0 | — | — | — | — | $statusDisplay |`n"
         }
     }
 
