@@ -69,9 +69,7 @@ function Test-Assessment-41062 {
         Add-ZtTestResultDetail @params
         return
     }
-    #endregion Data Collection
 
-    #region Assessment Logic
     $allAlerts    = @($allAlerts)
     # No active alerts: probe whether MDE is deployed in the tenant before deciding between Pass and Skip.
     if ($allAlerts.Count -eq 0) {
@@ -120,7 +118,9 @@ function Test-Assessment-41062 {
         Add-ZtTestResultDetail @params
         return
     }
+    #endregion Data Collection
 
+    #region Assessment Logic
     $threshold24h = $now.AddHours(-24)
 
     # Q1 client-side: pendingApproval alerts whose last update is more than 24 hours ago.
@@ -228,8 +228,8 @@ function Test-Assessment-41062 {
 
 ## [Defender XDR > Action center]({0})
 
-| Alert title | Severity | Investigation state | Incident | Created | Hours open | Service source | Status |
-| :---------- | :------- | :------------------ | :------- | :------ | ---------: | :------------- | :----- |
+| Alert title | Severity | Investigation state | Incident id | Created | Hours open | Service source | Status |
+| :---------- | :------- | :------------------ | :---------- | :------ | ---------: | :------------- | :----- |
 {1}
 '@
 
