@@ -139,10 +139,10 @@ function Test-Assessment-41206 {
             $rowStatus = 'Investigate'
         }
         else {
-            # Filter to workbooks whose category is 'sentinel' and whose sourceId matches the
-            # workspace resource ID (case-insensitive) per spec evaluation logic.
+            # Filter to workbooks whose sourceId matches the workspace resource ID
+            # (case-insensitive) per spec evaluation logic. The API already filters by
+            # category=sentinel, so no additional category check is required here.
             $matchedWorkbooks = @($rawWorkbooks | Where-Object {
-                $_.properties.category -ieq 'sentinel' -and
                 $_.properties.sourceId -ieq $workspace.WorkspaceId
             })
             $workbookCount = $matchedWorkbooks.Count
@@ -166,13 +166,14 @@ function Test-Assessment-41206 {
     $investigateItems = @($workspaceResults | Where-Object { $_.RowStatus -eq 'Investigate' })
     $failedItems      = @($workspaceResults | Where-Object { $_.RowStatus -eq 'Fail' })
 
-    # Pass only when every onboarded workspace has at least one workbook (no failures, no investigate).
-    $passed       = $failedItems.Count -eq 0 -and $investigateItems.Count -eq 0
+    # Pass only when every onboarded workspace has at least one workbook (no failures, no investigate,
+    # and no inaccessible workspaces whose onboarding state could not be confirmed).
+    $passed       = $failedItems.Count -eq 0 -and $investigateItems.Count -eq 0 -and $forbiddenWorkspaces.Count -eq 0
     $customStatus = $null
 
-    if ($investigateItems.Count -gt 0) {
+    if ($investigateItems.Count -gt 0 -or $forbiddenWorkspaces.Count -gt 0) {
         $customStatus       = 'Investigate'
-        $testResultMarkdown = "⚠️ Workbooks API returned an unexpected response for one or more workspaces. Re-run after verifying access on each affected workspace.`n`n%TestResult%"
+        $testResultMarkdown = "⚠️ Workbooks API returned an unexpected response for one or more workspaces, or one or more workspaces could not be checked due to insufficient permissions. Re-run after verifying access on each affected workspace.`n`n%TestResult%"
     }
     elseif ($passed) {
         $testResultMarkdown = "✅ Microsoft Sentinel workbooks are deployed for the workspace.`n`n%TestResult%"
@@ -185,7 +186,9 @@ function Test-Assessment-41206 {
 
     #region Report Generation
 
-    $portalSentinelLink = 'https://portal.azure.com/#view/HubsExtension/BrowseResource/resourceType/microsoft.securityinsightsarg%2Fsentinel'
+    $azContext          = Get-AzContext -ErrorAction SilentlyContinue
+    $portalHost         = if ($azContext -and $azContext.Environment.Name -eq 'AzureUSGovernment') { 'https://portal.azure.us' } else { 'https://portal.azure.com' }
+    $portalSentinelLink = "$portalHost/#view/HubsExtension/BrowseResource/resourceType/microsoft.securityinsightsarg%2Fsentinel"
     $tableTitle         = 'Workbooks per Sentinel workspace'
 
     $formatTemplate = @'
@@ -209,9 +212,9 @@ function Test-Assessment-41206 {
     }
 
     foreach ($result in $displayResults) {
-        $subLink       = "https://portal.azure.com/#resource/subscriptions/$($result.SubscriptionId)"
+        $subLink       = "$portalHost/#resource/subscriptions/$($result.SubscriptionId)"
         $sentinelId    = "/subscriptions/$($result.SubscriptionId)/resourcegroups/$($result.ResourceGroup)/providers/microsoft.securityinsightsarg/sentinel/$($result.WorkspaceName)"
-        $workbooksLink = "https://portal.azure.com/#view/Microsoft_Azure_Security_Insights/MainMenuBlade/~/Workbooks/id/$($sentinelId -replace '/', '%2F')"
+        $workbooksLink = "$portalHost/#view/Microsoft_Azure_Security_Insights/MainMenuBlade/~/Workbooks/id/$($sentinelId -replace '/', '%2F')"
         $subMd         = "[$(Get-SafeMarkdown $result.SubscriptionName)]($subLink)"
         $workspaceMd   = "[$(Get-SafeMarkdown $result.WorkspaceName)]($workbooksLink)"
         $namesMd       = if ($result.WorkbookNames.Count -gt 0) {
