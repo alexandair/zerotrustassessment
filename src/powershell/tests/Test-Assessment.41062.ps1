@@ -42,7 +42,7 @@ function Test-Assessment-41062 {
     $allAlerts = $null
     try {
         # Q1: Retrieve all active MDE alerts paged at 100 per request; auto-paging follows nextLink.
-        $allAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion beta -Filter $alertFilter -Select $alertSelect -Top 100 -DisablePaging -ErrorAction Stop
+        $allAlerts = Invoke-ZtGraphRequest -RelativeUri 'security/alerts_v2' -ApiVersion beta -Filter $alertFilter -Select $alertSelect -Top 100 -ErrorAction Stop
     }
     catch {
         $httpStatus = Get-ZtHttpStatusCode -ErrorRecord $_
@@ -104,7 +104,7 @@ function Test-Assessment-41062 {
             return
         }
 
-        if ($null -eq $deploymentProbeAlerts -or @($deploymentProbeAlerts.value).Count -eq 0) {
+        if ($null -eq $deploymentProbeAlerts -or @($deploymentProbeAlerts).Count -eq 0) {
             Add-ZtTestResultDetail -SkippedBecause NotApplicable -Result 'No Microsoft Defender for Endpoint alerts are available in this tenant.'
             return
         }
