@@ -133,13 +133,20 @@ resourcecontainers
     }
     catch {
         Write-PSFMessage "Infrastructure tag ARG query failed: $($_.Exception.Message)" -Tag Test -Level Warning
-        $httpStatus = Get-ZtHttpStatusCode -ErrorRecord $_
-        if ($httpStatus -in @(401, 403)) {
-            Write-PSFMessage "Infrastructure tag ARG query returned (HTTP $httpStatus) — insufficient permissions." -Tag Test -Level Warning
+        $httpStatusCode = $null
+        # Invoke-ZtAzureRequestCache throws a string like:
+        # "Azure REST request failed with status 403: ..."
+        # so there is no .Response property. Parse the message instead.
+        if ($_.Exception.Message -match 'with status (\d+):') {
+            $httpStatusCode = [int]$Matches[1]
+        }
+
+        if ($httpStatusCode -in @(401, 403)) {
+            Write-PSFMessage "Infrastructure tag ARG query returned (HTTP $httpStatusCode) — insufficient permissions." -Tag Test -Level Warning
             Add-ZtTestResultDetail -SkippedBecause NoAzureAccess -Result 'Unable to query tagged subscriptions for Infrastructure scan due to insufficient Azure permissions. Ensure you have Azure Resource Graph read access and the subscriptions are tagged with ZeroTrustAssessment:Infrastructure.'
             return
         }
-        Write-PSFMessage "Infrastructure tag ARG query returned (HTTP $httpStatus) — unexpected error." -Tag Test -Level Warning
+        Write-PSFMessage "Infrastructure tag ARG query returned (HTTP $httpStatusCode) — unexpected error." -Tag Test -Level Warning
         Add-ZtTestResultDetail -SkippedBecause NotSupported -Result 'Unable to query tagged subscriptions for Infrastructure scan due to an Azure Resource Graph error. Ensure Azure Resource Graph access is available and subscriptions are tagged with ZeroTrustAssessment:Infrastructure.'
         return
     }
