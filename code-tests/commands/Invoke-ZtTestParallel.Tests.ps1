@@ -5,49 +5,47 @@
 
 		. (Join-Path $srcRoot "private/tests/Invoke-ZtTestParallel.ps1")
 
-		# Provide PSFramework message functions when PSFramework is unavailable.
-		if (-not (Get-Command Clear-PSFMessage -ErrorAction SilentlyContinue)) {
+		# Use a deterministic in-memory message store instead of PSFramework's runtime store.
+		$script:__MessageStore = @()
+
+		function Clear-PSFMessage {
 			$script:__MessageStore = @()
+		}
 
-			function Clear-PSFMessage {
-				$script:__MessageStore = @()
+		function Write-PSFMessage {
+			param(
+				$Level,
+				$Message,
+				$StringValues,
+				$Target,
+				$Tag
+			)
+
+			$renderedMessage = if ($StringValues) {
+				$Message -f $StringValues
+			}
+			else {
+				$Message
 			}
 
-			function Write-PSFMessage {
-				param(
-					$Level,
-					$Message,
-					$StringValues,
-					$Target,
-					$Tag
-				)
+			$script:__MessageStore += [PSCustomObject]@{
+				Timestamp = Get-Date
+				Level = $Level
+				Message = $renderedMessage
+				Tag = $Tag
+				Runspace = [runspace]::DefaultRunspace.InstanceId
+				Target = $Target
+			}
+		}
 
-				$renderedMessage = if ($StringValues) {
-					$Message -f $StringValues
-				}
-				else {
-					$Message
-				}
+		function Get-PSFMessage {
+			param($Runspace)
 
-				$script:__MessageStore += [PSCustomObject]@{
-					Timestamp = Get-Date
-					Level = $Level
-					Message = $renderedMessage
-					Tag = $Tag
-					Runspace = [runspace]::DefaultRunspace.InstanceId
-					Target = $Target
-				}
+			if ($Runspace) {
+				return @($script:__MessageStore | Where-Object Runspace -eq $Runspace)
 			}
 
-			function Get-PSFMessage {
-				param($Runspace)
-
-				if ($Runspace) {
-					return @($script:__MessageStore | Where-Object Runspace -eq $Runspace)
-				}
-
-				return @($script:__MessageStore)
-			}
+			return @($script:__MessageStore)
 		}
 
 		function New-DummyZtTest {
@@ -108,7 +106,10 @@
 		}
 		Mock Update-ZtProgressState {}
 		Mock Write-ZtTestProgress {}
-		Mock Write-ZtTestFinish { param($Result) $Result }
+		Mock Write-ZtTestFinish {
+			param($Result, $PreviousMessages, $Test, $LogsPath, [switch] $PassThru)
+			$Result
+		}
 	}
 
 	AfterEach {
