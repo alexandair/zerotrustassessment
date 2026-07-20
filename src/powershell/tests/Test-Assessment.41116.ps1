@@ -63,14 +63,13 @@ function Test-Assessment-41116 {
     if ($queryError) {
         $httpStatus = Get-ZtHttpStatusCode -ErrorRecord $queryError
         $errorMessage = $queryError.Exception.Message
-        try {
+
             if ($queryError.ErrorDetails -and $queryError.ErrorDetails.Message) {
                 $errorBody = $queryError.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
                 $errorCode = if ($errorBody.error.code) { $errorBody.error.code } else { '—' }
                 $errorMessage = if ($errorBody.error.message) { $errorBody.error.message } else { $errorMessage }
             }
-        }
-        catch { }
+
 
         if ($httpStatus -eq 403 -and $errorMessage -match '(?i)(not licensed|license|plan 2|defender for office 365)') {
             $skippedBecause = 'NotApplicable'
