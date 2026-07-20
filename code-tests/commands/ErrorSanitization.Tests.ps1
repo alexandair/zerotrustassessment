@@ -5,6 +5,7 @@ Describe "Error sanitization" {
 
 		. (Join-Path $srcRoot "private/core/Protect-ZtReportText.ps1")
 		. (Join-Path $srcRoot "private/core/Get-ZtHttpStatusCode.ps1")
+		. (Join-Path $srcRoot "private/core/Get-ZtTestStatus.ps1")
 		. (Join-Path $srcRoot "private/tests/Get-ZtSafeErrorMessage.ps1")
 		. (Join-Path $srcRoot "private/tests/New-ZtSafeErrorRecord.ps1")
 		. (Join-Path $srcRoot "private/tests/Format-ZtTestErrorDetail.ps1")
@@ -103,12 +104,13 @@ Cookie: session=example-cookie
 			'Authorization: Bearer example-canary-token'
 			'Cookie: session=example-cookie'
 			'X-Api-Key: example-api-key'
+			'https://example.test/callback?access_token=example-access-token&client_secret=example-client-secret&sig=example-signature'
 		) -join "`n"
 
 		Add-ZtTestResultDetail -TestId '99999' -Title 'Canary test' -Description 'Canary description' -Status $false -Result $unsafeResult -CustomStatus Error
 
 		$storedResult = $script:__ZtSession.TestResultDetail.Value['99999'].TestResult
-		$storedResult | Should -Not -Match 'example-canary-token|example-cookie|example-api-key'
+		$storedResult | Should -Not -Match 'example-canary-token|example-cookie|example-api-key|example-access-token|example-client-secret|example-signature'
 		$storedResult | Should -Match '<redacted>'
 	}
 

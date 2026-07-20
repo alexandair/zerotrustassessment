@@ -63,6 +63,6 @@ function Get-ZtSafeErrorMessage {
 			return 'An unexpected error occurred. See the error details for the exception type and error ID.'
 		}
 
-		$diagnostics -join [Environment]::NewLine
+		$diagnostics -join '; '
 	}
 }
