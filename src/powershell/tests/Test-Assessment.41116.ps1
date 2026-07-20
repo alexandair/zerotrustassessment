@@ -12,17 +12,17 @@
 
 function Test-Assessment-41116 {
     [ZtTest(
-        Category = 'Email and collaboration security',
-        CompatibleLicense = ('THREAT_INTELLIGENCE'),
+        Category           = 'Email and collaboration security',
+        CompatibleLicense  = ('THREAT_INTELLIGENCE'),
         ImplementationCost = 'Medium',
-        Pillar = 'SecOps',
-        RiskLevel = 'Medium',
-        Service = ('Graph'),
-        SfiPillar = 'Monitor and detect cyberthreats',
-        TenantType = ('Workforce'),
-        TestId = 41116,
-        Title = 'Threat hunting against Email and Collaboration tables in Microsoft 365 Defender Advanced Hunting is operational',
-        UserImpact = 'Low'
+        Pillar             = 'SecOps',
+        RiskLevel          = 'Medium',
+        Service            = ('Graph'),
+        SfiPillar          = 'Monitor and detect cyberthreats',
+        TenantType         = ('Workforce'),
+        TestId             = 41116,
+        Title              = 'Threat hunting against Email and Collaboration tables in Microsoft 365 Defender Advanced Hunting is operational',
+        UserImpact         = 'Low'
     )]
     [CmdletBinding()]
     param()
@@ -30,122 +30,125 @@ function Test-Assessment-41116 {
     #region Data Collection
     Write-PSFMessage '🟦 Start' -Tag Test -Level VeryVerbose
 
-    $title    = 'Threat hunting against Email and Collaboration tables in Microsoft 365 Defender Advanced Hunting is operational'
-    $activity = 'Checking Microsoft Defender XDR EmailEvents hunting availability'
+    $activity  = 'Checking Microsoft Defender XDR EmailEvents hunting availability'
+    $testTitle = 'Threat hunting against Email and Collaboration tables in Microsoft 365 Defender Advanced Hunting is operational'
+    $kqlQuery  = 'EmailEvents | where Timestamp > ago(1d) | summarize Count=count()'
+    $endpoint  = 'https://graph.microsoft.com/beta/security/runHuntingQuery'
+    $results   = @()
+    $queryError = $null
+
     Write-ZtProgress -Activity $activity -Status 'Running EmailEvents probe query'
-
-    $endpoint    = 'https://graph.microsoft.com/v1.0/security/runHuntingQuery'
-    $requestBody = @{
-        Query    = 'EmailEvents | where Timestamp > ago(1d) | summarize Count=count()'
-        Timespan = 'P1D'
-    } | ConvertTo-Json -Depth 4
-
-    $queryResponse = $null
-    $queryError    = $null
-
     try {
-        # runHuntingQuery is a POST action — must use Invoke-MgGraphRequest directly.
-        $queryResponse = Microsoft.Graph.Authentication\Invoke-MgGraphRequest `
-            -Method Post `
-            -Uri $endpoint `
-            -Body $requestBody `
-            -ContentType 'application/json' `
-            -ErrorAction Stop
+        $requestBody = @{ query = $kqlQuery; timespan = 'P1D' } | ConvertTo-Json -Compress
+        $rawResult = Invoke-ZtGraphRequest -RelativeUri 'security/runHuntingQuery' -ApiVersion beta `
+            -Method POST -Body $requestBody -ErrorAction Stop
+        $results = if ($rawResult -and $rawResult.results) { @($rawResult.results) } else { @() }
     }
     catch {
         $queryError = $_
-        Write-PSFMessage "Failed to run EmailEvents hunting query: $_" -Tag Test -Level Warning
+        Write-PSFMessage "Advanced hunting query failed: $_" -Tag Test -Level Warning
     }
     #endregion Data Collection
 
     #region Assessment Logic
-    # Output table variables — tracked for the single-row result table.
-    $httpStatus       = $null
-    $errorMessage     = $null
-    $emailEventsCount = $null
+    $passed           = $false
+    $customStatus     = $null
+    $skippedBecause   = $null
+    $httpStatus       = '200'
+    $errorCode        = '—'
+    $errorMessage     = '—'
+    $emailEventsCount = '—'
+    $resultStatus     = 'Investigate'
 
     if ($queryError) {
         $httpStatus = Get-ZtHttpStatusCode -ErrorRecord $queryError
-
-        # Parse Graph error body for a human-readable message.
+        $errorMessage = $queryError.Exception.Message
         try {
             if ($queryError.ErrorDetails -and $queryError.ErrorDetails.Message) {
-                $errorBody    = $queryError.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
-                $errorMessage = $errorBody.error.message
+                $errorBody = $queryError.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
+                $errorCode = if ($errorBody.error.code) { $errorBody.error.code } else { '—' }
+                $errorMessage = if ($errorBody.error.message) { $errorBody.error.message } else { $errorMessage }
             }
         }
         catch { }
-        if (-not $errorMessage) {
-            $errorMessage = $queryError.Exception.Message
-        }
 
-        if ($httpStatus -eq 403) {
-            # License errors → Skipped.  Permission / access errors → Investigate.
-            if ($errorMessage -match '(?i)(not licensed|license|advanced hunting|plan 2)') {
-                Write-PSFMessage 'Test-Assessment-41116: SKIPPED — Advanced Hunting is not licensed for this tenant.' -Tag Test -Level VeryVerbose
-                Add-ZtTestResultDetail -SkippedBecause NotApplicable
-                return
-            }
-            Add-ZtTestResultDetail -TestId '41116' -Title $title -Status $false -CustomStatus 'Investigate' `
-                -Result "⚠️ The Microsoft Defender XDR Advanced Hunting API rejected the probe with HTTP 403. Verify the caller has the ``ThreatHunting.Read.All`` Graph permission and a supported delegated role such as Security Reader, then re-run."
-            return
+        if ($httpStatus -eq 403 -and $errorMessage -match '(?i)(not licensed|license|plan 2|defender for office 365)') {
+            $skippedBecause = 'NotApplicable'
+            $resultStatus = 'Skipped'
+            $testResultMarkdown = "⚠️ The tenant does not have the required Microsoft Defender for Office 365 Plan 2 Advanced Hunting capability.`n`n%TestResult%"
         }
-
-        if ($httpStatus -eq 400 -and $errorMessage -match '(?i)(unknown table|unknown schema|EmailEvents)') {
-            # Schema unavailable → Fail.
-            Add-ZtTestResultDetail -TestId '41116' -Title $title -Status $false `
-                -Result '❌ The Microsoft Defender XDR Advanced Hunting API is reachable, but the EmailEvents table or Email and Collaboration schema is unavailable in this tenant.'
-            return
+        elseif ($httpStatus -eq 400 -and $errorMessage -match '(?i)(unknown table|unknown schema|failed to resolve (table|column).*EmailEvents|EmailEvents.*(not found|unavailable))') {
+            $resultStatus = 'Fail'
+            $testResultMarkdown = "❌ The Microsoft Defender XDR Advanced Hunting API is reachable, but the EmailEvents table or Email and Collaboration schema is unavailable in this tenant.`n`n%TestResult%"
         }
-
-        # Any other error → Investigate.
-        $httpStatusText = if ($null -ne $httpStatus) { " HTTP $httpStatus." } else { '' }
-        Add-ZtTestResultDetail -TestId '41116' -Title $title -Status $false -CustomStatus 'Investigate' `
-            -Result "⚠️ The Microsoft Defender XDR Advanced Hunting API returned an unexpected error.$httpStatusText Re-run the assessment after verifying connectivity and permissions."
-        return
+        elseif ($httpStatus -eq 403) {
+            $customStatus = 'Investigate'
+            $testResultMarkdown = "⚠️ **ThreatHunting.Read.All** permission is required to run advanced hunting queries. Verify the permission is consented and the assessment identity has Security Reader or Security Operator role, then re-run.`n`n%TestResult%"
+        }
+        elseif ($httpStatus -eq 429) {
+            $customStatus = 'Investigate'
+            $testResultMarkdown = "⚠️ The advanced hunting quota was exceeded. Retry when the quota window resets (typically a few minutes).`n`n%TestResult%"
+        }
+        else {
+            $customStatus = 'Investigate'
+            $testResultMarkdown = "⚠️ Microsoft Graph returned an unexpected error while running the advanced hunting query. Re-run after 5–10 minutes; file a support ticket if this persists.`n`n%TestResult%"
+        }
     }
-
-    # Q1 succeeded — extract the count from the first result row.
-    $firstRow = @($queryResponse.results)[0]
-    if ($firstRow) {
-        foreach ($col in @('Count', 'count_', 'count')) {
-            if ($firstRow.PSObject.Properties.Name -contains $col -and $null -ne $firstRow.$col) {
-                $emailEventsCount = [int]$firstRow.$col
+    elseif ($results.Count -eq 0) {
+        $customStatus = 'Investigate'
+        $testResultMarkdown = "⚠️ No results were returned by the EmailEvents advanced hunting query. Verify that email is flowing through Microsoft 365 and that the Advanced Hunting data pipeline is active, then re-run.`n`n%TestResult%"
+    }
+    else {
+        foreach ($column in @('Count', 'count_', 'count')) {
+            if ($results[0].PSObject.Properties.Name -contains $column -and $null -ne $results[0].$column) {
+                try {
+                    $emailEventsCount = [int]$results[0].$column
+                }
+                catch {
+                    Write-PSFMessage "EmailEvents count could not be parsed: $($results[0].$column)" -Tag Test -Level Warning
+                }
                 break
             }
         }
-    }
 
-    if ($null -eq $emailEventsCount) {
-        Add-ZtTestResultDetail -TestId '41116' -Title $title -Status $false -CustomStatus 'Investigate' `
-            -Result '⚠️ The Microsoft Defender XDR Advanced Hunting API returned a response, but the EmailEvents probe result could not be parsed.'
-        return
-    }
-
-    $passed = $emailEventsCount -gt 0
-    if ($passed) {
-        $testResultMarkdown = "✅ The Microsoft Defender XDR Advanced Hunting API is reachable and Email and Collaboration data is queryable from automation.`n`n%TestResult%"
-    }
-    else {
-        $testResultMarkdown = "⚠️ The Microsoft Defender XDR Advanced Hunting API is reachable, but the probe returned zero recent EmailEvents. Verify that email is flowing through Microsoft 365 and that the Advanced Hunting data pipeline is active.`n`n%TestResult%"
+        if ($emailEventsCount -eq '—') {
+            $customStatus = 'Investigate'
+            $testResultMarkdown = "⚠️ The Microsoft Defender XDR Advanced Hunting API returned a response, but the EmailEvents probe result could not be parsed.`n`n%TestResult%"
+        }
+        elseif ($emailEventsCount -gt 0) {
+            $passed = $true
+            $resultStatus = 'Pass'
+            $testResultMarkdown = "✅ The Microsoft Defender XDR Advanced Hunting API is reachable and Email and Collaboration data is queryable from automation.`n`n%TestResult%"
+        }
+        else {
+            $customStatus = 'Investigate'
+            $testResultMarkdown = "⚠️ The Microsoft Defender XDR Advanced Hunting API is reachable, but the probe returned zero recent EmailEvents. Verify that email is flowing through Microsoft 365 and that the Advanced Hunting data pipeline is active.`n`n%TestResult%"
+        }
     }
     #endregion Assessment Logic
 
     #region Report Generation
-    $statusDisplay = if ($passed) { '✅ Pass' } else { '⚠️ Investigate' }
-
     $formatTemplate = @'
 
 | Endpoint | HTTP Status | Error Code | Error Message | EmailEvents Count (24h) | Result |
 | :------- | ----------: | :--------- | :------------ | ----------------------: | :----- |
-| {0} | 200 | — | — | {1} | {2} |
+| {0} | {1} | {2} | {3} | {4} | {5} |
 '@
-
-    $mdInfo = $formatTemplate -f (Get-SafeMarkdown $endpoint), $emailEventsCount, $statusDisplay
+    $mdInfo = $formatTemplate -f (Get-SafeMarkdown -Text $endpoint), $httpStatus, (Get-SafeMarkdown -Text $errorCode), (Get-SafeMarkdown -Text $errorMessage), $emailEventsCount, $resultStatus
     $testResultMarkdown = $testResultMarkdown -replace '%TestResult%', $mdInfo
     #endregion Report Generation
 
-    $params = @{ TestId = '41116'; Title = $title; Status = $passed; Result = $testResultMarkdown }
-    if (-not $passed) { $params.CustomStatus = 'Investigate' }
+    $params = @{
+        TestId = '41116'
+        Title  = $testTitle
+        Status = $passed
+        Result = $testResultMarkdown
+    }
+    if ($customStatus) {
+        $params.CustomStatus = $customStatus
+    }
+    if ($skippedBecause) {
+        $params.SkippedBecause = $skippedBecause
+    }
     Add-ZtTestResultDetail @params
 }
