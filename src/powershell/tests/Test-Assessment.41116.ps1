@@ -64,11 +64,16 @@ function Test-Assessment-41116 {
         $httpStatus = Get-ZtHttpStatusCode -ErrorRecord $queryError
         $errorMessage = $queryError.Exception.Message
 
-            if ($queryError.ErrorDetails -and $queryError.ErrorDetails.Message) {
+        if ($queryError.ErrorDetails -and $queryError.ErrorDetails.Message) {
+            try {
                 $errorBody = $queryError.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
                 $errorCode = if ($errorBody.error.code) { $errorBody.error.code } else { '—' }
                 $errorMessage = if ($errorBody.error.message) { $errorBody.error.message } else { $errorMessage }
             }
+            catch {
+                Write-PSFMessage "Failed to parse the error response body: $_" -Tag Test -Level VeryVerbose
+            }
+        }
 
 
         if ($httpStatus -eq 403 -and $errorMessage -match '(?i)(not licensed|license|plan 2|defender for office 365)') {
