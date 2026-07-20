@@ -154,6 +154,70 @@ Describe "Convert-ZtAssessmentToWorkshop" {
 			$result.configuration.pillars.identity.taskOverrides['RMI_065'].notes |
 				Should -Be "ZT Assessment result:`n$($script:iconFailed) Portal needs configuration`n"
 		}
+
+		It "Strips a leading markdown heading marker" {
+			$a = New-Assessment @( New-Test '21776' 'Identity' 'Failed' "`n## Heading text" )
+			$result = Convert-ZtAssessmentToWorkshop -AssessmentResults $a -MappingFilePath $script:mappingPath
+
+			$result.configuration.pillars.identity.taskOverrides['RMI_065'].notes |
+				Should -Be "ZT Assessment result:`n$($script:iconFailed) Heading text`n"
+		}
+
+		It "Removes bold emphasis markers" {
+			$a = New-Assessment @( New-Test '21776' 'Identity' 'Failed' "`n**bold** finding" )
+			$result = Convert-ZtAssessmentToWorkshop -AssessmentResults $a -MappingFilePath $script:mappingPath
+
+			$result.configuration.pillars.identity.taskOverrides['RMI_065'].notes |
+				Should -Be "ZT Assessment result:`n$($script:iconFailed) bold finding`n"
+		}
+
+		It "Preserves a backtick code span, including one beginning with 'n'" {
+			# Regression for the code-span corruption fix: the literal backtick must be
+			# built with a single-quoted segment so it is not treated as an escape.
+			$a = New-Assessment @( New-Test '21776' 'Identity' 'Failed' ("`n" + 'Configure `networkPolicy` before deployment') )
+			$result = Convert-ZtAssessmentToWorkshop -AssessmentResults $a -MappingFilePath $script:mappingPath
+
+			$expected = "ZT Assessment result:`n" + $script:iconFailed + ' Configure `networkPolicy` before deployment' + "`n"
+			$result.configuration.pillars.identity.taskOverrides['RMI_065'].notes | Should -Be $expected
+		}
+
+		It "Collapses a standalone literal PowerShell newline escape (`n)" {
+			$a = New-Assessment @( New-Test '21776' 'Identity' 'Failed' ("`n" + 'First `n Second') )
+			$result = Convert-ZtAssessmentToWorkshop -AssessmentResults $a -MappingFilePath $script:mappingPath
+
+			$result.configuration.pillars.identity.taskOverrides['RMI_065'].notes |
+				Should -Be "ZT Assessment result:`n$($script:iconFailed) First Second`n"
+		}
+
+		It "Collapses a standalone literal C-style newline escape (\n)" {
+			$a = New-Assessment @( New-Test '21776' 'Identity' 'Failed' ("`n" + 'First \n Second') )
+			$result = Convert-ZtAssessmentToWorkshop -AssessmentResults $a -MappingFilePath $script:mappingPath
+
+			$result.configuration.pillars.identity.taskOverrides['RMI_065'].notes |
+				Should -Be "ZT Assessment result:`n$($script:iconFailed) First Second`n"
+		}
+
+		It "Leaves a backslash path (e.g. C:\next) untouched" {
+			$a = New-Assessment @( New-Test '21776' 'Identity' 'Failed' ("`n" + 'Path C:\next config') )
+			$result = Convert-ZtAssessmentToWorkshop -AssessmentResults $a -MappingFilePath $script:mappingPath
+
+			$expected = "ZT Assessment result:`n" + $script:iconFailed + ' Path C:\next config' + "`n"
+			$result.configuration.pillars.identity.taskOverrides['RMI_065'].notes | Should -Be $expected
+		}
+	}
+
+	Context "Empty findings" {
+		It "Does not emit an icon-only note when a finding is a status symbol only" {
+			# TestResult is nothing but a status emoji; after stripping it, no text remains
+			# so no bogus "<icon> " note should be produced for the mapped task.
+			$a = New-Assessment @( New-Test '21776' 'Identity' 'Failed' ("`n" + $script:iconPassed) )
+			$result = Convert-ZtAssessmentToWorkshop -AssessmentResults $a -MappingFilePath $script:mappingPath
+
+			$result.configuration.pillars.identity.taskOverrides.Contains('RMI_065') | Should -BeTrue
+			$notes = $result.configuration.pillars.identity.taskOverrides['RMI_065'].notes
+			$notes | Should -Be ''
+			$notes | Should -Not -Match ([regex]::Escape($script:iconFailed))
+		}
 	}
 
 	Context "Long-line compaction" {

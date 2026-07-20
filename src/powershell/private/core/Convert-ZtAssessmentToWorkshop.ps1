@@ -77,8 +77,11 @@ function Convert-ZtAssessmentToWorkshop {
 		#   * [text](url) -> text   (unwrap inline links, drop the URL)
 		#   * leading #, ##, ###    (drop markdown heading markers)
 		#   * **bold** -> bold      (remove bold emphasis markers)
-		#   * `n / \n literals      (strip stray newline escapes from source text)
-		# Backtick code spans are intentionally preserved.
+		#   * `n / \n delimiters    (strip stray newline escapes that stand alone,
+		#                            i.e. only when flanked by whitespace or the
+		#                            string edge)
+		# Backtick code spans (e.g. `networkPolicy`) and paths (e.g. C:\next) are
+		# intentionally preserved: an in-word `n or \n is never treated as an escape.
 		param (
 			[Parameter(Mandatory = $false)]
 			[string] $Text
@@ -96,9 +99,12 @@ function Convert-ZtAssessmentToWorkshop {
 		$Text = [regex]::Replace($Text, '^\s*#{1,6}\s*', '')   # leading heading hashes
 		$Text = $Text -replace '\*\*', ''                      # **bold** -> bold
 		# Some source TestResult values contain literal newline escape sequences
-		# (PowerShell-style `n or C-style \n) that leaked in as visible text
-		# rather than real line breaks. Strip them so they don't appear in notes.
-		$Text = $Text -replace '`n', ' ' -replace '\\n', ' '
+		# (PowerShell-style `n or C-style \n) that leaked in as visible text rather
+		# than real line breaks. Only strip them when they stand alone as delimiters
+		# (flanked by whitespace or the string edge); this leaves backtick code spans
+		# such as `networkPolicy` and paths such as C:\next untouched.
+		$Text = [regex]::Replace($Text, '(?<=^|\s)`n(?=\s|$)', ' ')   # standalone `n
+		$Text = [regex]::Replace($Text, '(?<=^|\s)\\n(?=\s|$)', ' ')  # standalone \n
 		$Text = [regex]::Replace($Text, '\s{2,}', ' ')         # collapse doubled spaces
 		return $Text.Trim()
 	}
@@ -241,6 +247,10 @@ function Convert-ZtAssessmentToWorkshop {
 		# to the concise TestTitle, then prepend a status icon derived from TestStatus.
 		if (-not [string]::IsNullOrWhiteSpace($notesText)) {
 			$notesText = [regex]::Replace($notesText, '^[\p{So}\uFE0F\s]+', '')
+		}
+		# Re-check after stripping: a finding that was only a status symbol collapses to
+		# nothing here, so don't prepend an icon (which would emit a bogus icon-only note).
+		if (-not [string]::IsNullOrWhiteSpace($notesText)) {
 			if ($notesText.Length -gt $maxNotesLineLength) {
 				$testTitle = [string](Get-ObjectValue -InputObject $test -Name 'TestTitle')
 				if (-not [string]::IsNullOrWhiteSpace($testTitle)) {
@@ -249,6 +259,9 @@ function Convert-ZtAssessmentToWorkshop {
 			}
 			$icon = Get-StatusIcon -Status $testStatus
 			$notesText = "$icon $notesText"
+		}
+		else {
+			$notesText = ''
 		}
 
 		foreach ($pillarName in $pillarNames) {
