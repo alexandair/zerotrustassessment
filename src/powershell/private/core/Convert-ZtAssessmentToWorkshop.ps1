@@ -224,11 +224,20 @@ function Convert-ZtAssessmentToWorkshop {
 		$testResult = Get-ObjectValue -InputObject $test -Name 'TestResult'
 		$notesText  = ''
 		if (-not [string]::IsNullOrEmpty($testResult)) {
-			$nl = if ($testResult.Contains("`n")) { "`n" } elseif ($testResult.Contains('\n')) { '\n' } else { $null }
-			if ($null -ne $nl) {
-				# Use the String[] overload so a multi-character separator (literal '\n')
-				# is matched as a sequence rather than as a char set ('\' or 'n').
-				foreach ($part in $testResult.Split([string[]]@($nl), [System.StringSplitOptions]::None)) {
+			$headlineParts = if ($testResult.Contains("`n")) {
+				$testResult.Split([string[]]@("`n"), [System.StringSplitOptions]::None)
+			}
+			elseif ([regex]::IsMatch($testResult, '(?<=^|\s)\\n(?=\s|$)')) {
+				# Treat literal C-style newline escapes as delimiters only when they stand
+				# alone. This avoids splitting valid paths such as C:\next at the "\n".
+				[regex]::Split($testResult, '(?<=^|\s)\\n(?=\s|$)')
+			}
+			else {
+				$null
+			}
+
+			if ($null -ne $headlineParts) {
+				foreach ($part in $headlineParts) {
 					$trimmed = $part.Trim()
 					if ($trimmed.Length -gt 0) { $notesText = $trimmed; break }
 				}

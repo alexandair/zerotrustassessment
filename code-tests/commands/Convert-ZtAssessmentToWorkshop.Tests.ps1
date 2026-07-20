@@ -198,7 +198,9 @@ Describe "Convert-ZtAssessmentToWorkshop" {
 		}
 
 		It "Leaves a backslash path (e.g. C:\next) untouched" {
-			$a = New-Assessment @( New-Test '21776' 'Identity' 'Failed' ("`n" + 'Path C:\next config') )
+			# Do not prefix a real newline: headline extraction must not mistake the
+			# path's literal "\n" for a C-style newline delimiter.
+			$a = New-Assessment @( New-Test '21776' 'Identity' 'Failed' 'Path C:\next config' )
 			$result = Convert-ZtAssessmentToWorkshop -AssessmentResults $a -MappingFilePath $script:mappingPath
 
 			$expected = "ZT Assessment result:`n" + $script:iconFailed + ' Path C:\next config' + "`n"
