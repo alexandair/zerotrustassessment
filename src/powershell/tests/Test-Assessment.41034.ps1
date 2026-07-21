@@ -24,7 +24,7 @@ function Test-Assessment-41034 {
     Write-PSFMessage '🟦 Start' -Tag Test -Level VeryVerbose
     $activity = 'Checking anti-spam (hosted content filter) policy configuration'
     Write-ZtProgress -Activity $activity -Status 'Retrieving hosted content filter policies'
-   
+    
     # Q1a: Retrieve all hosted content filter policies from Exchange Online.
      $allPolicies = $null
     try {
