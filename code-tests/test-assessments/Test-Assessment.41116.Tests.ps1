@@ -126,6 +126,21 @@ Describe 'Test-Assessment-41116' {
             $script:capturedResult | Should -Match '\| 0 \| Investigate \|'
         }
 
+        It 'Should preserve a count above the 32-bit integer limit' {
+            Mock Invoke-ZtGraphRequest {
+                [PSCustomObject]@{
+                    results = @([PSCustomObject]@{ Count = 3000000000L })
+                }
+            }
+
+            Test-Assessment-41116
+
+            $script:capturedStatus | Should -BeTrue
+            $script:capturedCustomStatus | Should -BeNullOrEmpty
+            $script:capturedSkippedBecause | Should -BeNullOrEmpty
+            $script:capturedResult | Should -Match '\| 3000000000 \| Pass \|'
+        }
+
         It 'Should investigate when the results array is empty' {
             Mock Invoke-ZtGraphRequest {
                 [PSCustomObject]@{ results = @() }
