@@ -106,6 +106,7 @@ Describe 'Test-Assessment-41116' {
             $script:capturedCustomStatus | Should -BeNullOrEmpty
             $script:capturedSkippedBecause | Should -BeNullOrEmpty
             $script:capturedResult | Should -Match 'data is queryable from automation'
+            $script:capturedResult | Should -Match '\| /beta/security/runHuntingQuery \| 200 \|'
             $script:capturedResult | Should -Match '\| 42 \| Pass \|'
         }
 
@@ -185,6 +186,9 @@ Describe 'Test-Assessment-41116' {
             $script:capturedCustomStatus | Should -Be 'Investigate'
             $script:capturedSkippedBecause | Should -BeNullOrEmpty
             $script:capturedResult | Should -Match 'ThreatHunting.Read.All'
+            $script:capturedResult | Should -Match 'Global Reader'
+            $script:capturedResult | Should -Match 'Security Administrator'
+            $script:capturedResult | Should -Match 'Defender XDR Unified RBAC'
         }
 
         It 'Should fail when HTTP 400 reports an unknown EmailEvents table' {

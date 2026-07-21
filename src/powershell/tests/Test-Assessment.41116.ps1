@@ -33,7 +33,7 @@ function Test-Assessment-41116 {
     $activity  = 'Checking Microsoft Defender XDR EmailEvents hunting availability'
     $testTitle = 'Threat hunting against Email and Collaboration tables in Microsoft 365 Defender Advanced Hunting is operational'
     $kqlQuery  = 'EmailEvents | where Timestamp > ago(1d) | summarize Count=count()'
-    $endpoint  = 'https://graph.microsoft.com/beta/security/runHuntingQuery'
+    $endpoint  = '/beta/security/runHuntingQuery'
     $results   = @()
     $queryError = $null
 
@@ -90,7 +90,7 @@ function Test-Assessment-41116 {
         }
         elseif ($httpStatus -eq 403) {
             $customStatus = 'Investigate'
-            $testResultMarkdown = "⚠️ **ThreatHunting.Read.All** permission is required to run advanced hunting queries. Verify the permission is consented and the assessment identity has Security Reader or Security Operator role, then re-run.`n`n%TestResult%"
+            $testResultMarkdown = "⚠️ **ThreatHunting.Read.All** permission is required to run advanced hunting queries. Verify the permission is consented and the assessment identity has a supported role: Global Reader, Security Reader, Security Operator, Security Administrator, or a Defender XDR Unified RBAC role with advanced hunting access, then re-run.`n`n%TestResult%"
         }
         elseif ($httpStatus -eq 429) {
             $customStatus = 'Investigate'
@@ -109,7 +109,7 @@ function Test-Assessment-41116 {
         foreach ($column in @('Count', 'count_', 'count')) {
             if ($results[0].PSObject.Properties.Name -contains $column -and $null -ne $results[0].$column) {
                 try {
-                    $emailEventsCount = [int]$results[0].$column
+                    $emailEventsCount = [long]$results[0].$column
                 }
                 catch {
                     Write-PSFMessage "EmailEvents count could not be parsed: $($results[0].$column)" -Tag Test -Level Warning
