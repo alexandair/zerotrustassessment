@@ -26,7 +26,7 @@ function Test-Assessment-41034 {
     Write-ZtProgress -Activity $activity -Status 'Retrieving hosted content filter policies'
     
     # Q1a: Retrieve all hosted content filter policies from Exchange Online.
-     $allPolicies = $null
+    $allPolicies = $null
     try {
         $allPolicies = @(Get-HostedContentFilterPolicy -ErrorAction Stop |
             Select-Object Identity, IsBuiltInProtection, IsDefault,
