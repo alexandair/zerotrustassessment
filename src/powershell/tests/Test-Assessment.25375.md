@@ -7,8 +7,8 @@ Without this protection:
 
 **Remediation action**
 - Review Global Secure Access licensing requirements and purchase appropriate licenses. For more information, see [Licensing overview](https://learn.microsoft.com/entra/global-secure-access/overview-what-is-global-secure-access?wt.mc_id=zerotrustrecommendations_automation_content_cnl_csasci#licensing-overview).
-- Assign licenses to users through the Microsoft Entra admin center. For more information, see [Assign licenses to users](https://learn.microsoft.com/entra/fundamentals/license-users-groups?wt.mc_id=zerotrustrecommendations_automation_content_cnl_csasci).
-- Use group-based licensing for easier management at scale. For more information, see [Group-based licensing](https://learn.microsoft.com/entra/fundamentals/concept-group-based-licensing?wt.mc_id=zerotrustrecommendations_automation_content_cnl_csasci).
+- Assign licenses to users through the Microsoft 365 admin center. For more information, see [Assign or unassign licenses for users in the Microsoft 365 admin center](https://learn.microsoft.com/microsoft-365/admin/manage/assign-licenses-to-users?view=o365-worldwide&preserve-view=true&wt.mc_id=zerotrustrecommendations_automation_content_cnl_csasci).
+- Use group-based licensing for easier management at scale. For more information, see [Assign or unassign licenses to a group in the Microsoft 365 admin center](https://learn.microsoft.com/microsoft-365/admin/manage/manage-group-licenses?view=o365-worldwide&preserve-view=true&wt.mc_id=zerotrustrecommendations_automation_content_cnl_csasci).
 - Monitor license utilization through Microsoft 365 admin center. For more information, see [Microsoft 365 admin center](https://admin.microsoft.com/Adminportal/Home#/licenses).
 - Review Microsoft Entra Suite as an alternative that includes both Internet Access and Private Access. For more information, see [What's new in Microsoft Entra](https://learn.microsoft.com/entra/fundamentals/whats-new?wt.mc_id=zerotrustrecommendations_automation_content_cnl_csasci#microsoft-entra-suite).
 <!--- Results --->
