@@ -97,25 +97,38 @@ function Test-Assessment-41034 {
     # Spec: zero rows from Get-HostedContentFilterRule is NOT an error — evaluate Default policy alone.
     $enabledRules = @($allRules | Where-Object { $_.State -eq 'Enabled' })
 
-    # Map: policy identity → rule name (join key: rule.HostedContentFilterPolicy == policy.Identity)
+    # Map: policy identity → all rule names that reference it
     $rulesForPolicy = @{}
     foreach ($rule in $enabledRules) {
         if (-not $rulesForPolicy.ContainsKey($rule.HostedContentFilterPolicy)) {
-            $rulesForPolicy[$rule.HostedContentFilterPolicy] = $rule.Name
+            $rulesForPolicy[$rule.HostedContentFilterPolicy] = [System.Collections.Generic.List[string]]::new()
         }
+        $rulesForPolicy[$rule.HostedContentFilterPolicy].Add($rule.Name)
     }
 
     # Default policy (IsDefault == True) — always in-scope as the catch-all
     $defaultPolicy = $allPolicies | Where-Object { $_.IsDefault -eq $true } | Select-Object -First 1
 
+    # Spec: Default policy must be present; if policies were returned but none is marked IsDefault,
+    # something is wrong with the data — return Investigate rather than a false Pass.
+    if ($null -eq $defaultPolicy) {
+        $params = @{
+            TestId       = '41034'
+            Title        = 'Anti-spam (hosted content filter) policies are configured with recommended thresholds and actions'
+            Status       = $false
+            Result       = '⚠️ Policies were returned by **Get-HostedContentFilterPolicy** but none has **IsDefault = $true**. The Default policy is always present in Exchange Online; this indicates unexpected data — verify Exchange Online access and re-run.'
+            CustomStatus = 'Investigate'
+        }
+        Add-ZtTestResultDetail @params
+        return
+    }
+
     # Collect in-scope policy identities: Default first, then all referenced by enabled rules (deduplicated).
     # Use OrdinalIgnoreCase HashSet — Exchange may return different casing between cmdlets.
     $inScopeIdentities = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    if ($defaultPolicy) {
-        [void]$inScopeIdentities.Add($defaultPolicy.Identity)
-    }
+    $inScopeIdentities.Add($defaultPolicy.Identity) | Out-Null
     foreach ($policyName in $rulesForPolicy.Keys) {
-        [void]$inScopeIdentities.Add($policyName)
+        $inScopeIdentities.Add($policyName) | Out-Null
     }
 
     $passed         = $true
@@ -126,7 +139,7 @@ function Test-Assessment-41034 {
     # Process in-scope policies
     foreach ($identity in $inScopeIdentities) {
         $policy   = $policyByIdentity[$identity]
-        $ruleName = if ($rulesForPolicy.ContainsKey($identity)) { $rulesForPolicy[$identity] } else { '' }
+        $ruleName = if ($rulesForPolicy.ContainsKey($identity)) { $rulesForPolicy[$identity] -join ', ' } else { '' }
 
         if ($null -eq $policy) {
             # Orphan rule: enabled rule references a policy not found in Get-HostedContentFilterPolicy → Investigate
@@ -147,19 +160,20 @@ function Test-Assessment-41034 {
 
         $failReasons = [System.Collections.Generic.List[string]]::new()
         # Spec-named reasons first (most impactful)
-        if ($policy.HighConfidencePhishAction -ne 'Quarantine')          { [void]$failReasons.Add('HC-phish delivered') }
-        if ($policy.PhishSpamAction -ne 'Quarantine')                    { [void]$failReasons.Add('phish delivered') }
-        if ($policy.HighConfidenceSpamAction -ne 'Quarantine')           { [void]$failReasons.Add('HC-spam delivered') }
-        if ($policy.SpamAction -notin @('MoveToJmf', 'Quarantine'))      { [void]$failReasons.Add("spam action $($policy.SpamAction)") }
-        if ($policy.BulkSpamAction -notin @('MoveToJmf', 'Quarantine')) { [void]$failReasons.Add("bulk action $($policy.BulkSpamAction)") }
-        if ($policy.BulkThreshold -gt 6)                                 { [void]$failReasons.Add("bulk threshold $($policy.BulkThreshold)") }
-        if ($policy.MarkAsSpamBulkMail -ne 'On')                         { [void]$failReasons.Add('MarkAsSpamBulkMail off') }
-        if ($allowedSendersCount -gt 0)                                  { [void]$failReasons.Add('allowed senders non-empty') }
-        if ($allowedSenderDomainsCount -gt 0)                            { [void]$failReasons.Add('allowed domains non-empty') }
-        if ($policy.HighConfidencePhishQuarantineTag -ne 'AdminOnlyAccessPolicy') { [void]$failReasons.Add('HC-phish tag allows self-release') }
-        if ($policy.PhishZapEnabled -ne $true)                           { [void]$failReasons.Add('PhishZAP disabled') }
-        if ($policy.SpamZapEnabled -ne $true)                            { [void]$failReasons.Add('SpamZAP disabled') }
-        if ($policy.InlineSafetyTipsEnabled -ne $true)                   { [void]$failReasons.Add('SafetyTips disabled') }
+        if ($policy.HighConfidencePhishAction -ne 'Quarantine')               { $failReasons.Add('HC-phish delivered') }
+        if ($policy.PhishSpamAction -ne 'Quarantine')                         { $failReasons.Add('phish delivered') }
+        if ($policy.HighConfidenceSpamAction -ne 'Quarantine')                { $failReasons.Add('HC-spam delivered') }
+        if ($policy.SpamAction -notin @('MoveToJmf', 'Quarantine'))           { $failReasons.Add("spam action $($policy.SpamAction)") }
+        if ($policy.BulkSpamAction -notin @('MoveToJmf', 'Quarantine'))       { $failReasons.Add("bulk action $($policy.BulkSpamAction)") }
+        if ($null -eq $policy.BulkThreshold)  { $failReasons.Add('bulk threshold null (unexpected — verify policy data)') }
+        elseif ($policy.BulkThreshold -gt 6) { $failReasons.Add("bulk threshold $($policy.BulkThreshold)") }
+        if ($policy.MarkAsSpamBulkMail -ne 'On')                              { $failReasons.Add('MarkAsSpamBulkMail off') }
+        if ($allowedSendersCount -gt 0)                                       { $failReasons.Add('allowed senders non-empty') }
+        if ($allowedSenderDomainsCount -gt 0)                                 { $failReasons.Add('allowed domains non-empty') }
+        if ($policy.HighConfidencePhishQuarantineTag -ne 'AdminOnlyAccessPolicy') { $failReasons.Add('HC-phish tag allows self-release') }
+        if ($policy.PhishZapEnabled -ne $true)                                { $failReasons.Add('PhishZAP disabled') }
+        if ($policy.SpamZapEnabled -ne $true)                                 { $failReasons.Add('SpamZAP disabled') }
+        if ($policy.InlineSafetyTipsEnabled -ne $true)                        { $failReasons.Add('SafetyTips disabled') }
 
         $rowFails = $failReasons.Count -gt 0
         if ($rowFails) {
@@ -224,9 +238,10 @@ function Test-Assessment-41034 {
         $policySuffix  = if ($row.IsDefault) { ' [default]' } else { '' }
         $policyDisplay = "$(Get-SafeMarkdown $row.Identity)$policySuffix"
 
-        # Scope column
+        # Scope column: show all rule names if multiple rules reference this policy
         $scopeDisplay = if ($row.IsOrphan -or $row.RuleName) {
-            "Applied via rule $(Get-SafeMarkdown $row.RuleName)"
+            $ruleLabel = if (($row.RuleName -split ', ').Count -gt 1) { 'rules' } else { 'rule' }
+            "Applied via $ruleLabel $(Get-SafeMarkdown $row.RuleName)"
         } else {
             'Default (catch-all)'
         }
