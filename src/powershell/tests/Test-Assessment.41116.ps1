@@ -42,7 +42,10 @@ function Test-Assessment-41116 {
         $requestBody = @{ query = $kqlQuery; timespan = 'P1D' } | ConvertTo-Json -Compress
         $rawResult = Invoke-ZtGraphRequest -RelativeUri 'security/runHuntingQuery' -ApiVersion beta `
             -Method POST -Body $requestBody -ErrorAction Stop
-        $results = if ($rawResult -and $rawResult.results) { @($rawResult.results) } else { @() }
+        $results = @()
+        if ($null -ne $rawResult -and $null -ne $rawResult.results) {
+            $results = @($rawResult.results)
+        }
     }
     catch {
         $queryError = $_
