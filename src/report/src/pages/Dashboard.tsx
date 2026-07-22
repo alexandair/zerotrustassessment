@@ -1,31 +1,14 @@
-import { MonitorSmartphone, Users, User, UserCog, Luggage, Monitor, Layers3, Building2, ShieldCheck, CircleCheckBig, Briefcase } from "lucide-react";
+import { MonitorSmartphone, Users, User, UserCog, Building2, ShieldCheck, Bot, Info, CircleCheckBig, Briefcase, Monitor } from "lucide-react";
 
 import {
     Bar,
     BarChart,
     Cell,
     LabelList,
-    // Area,
-    // AreaChart,
-    // Bar,
-    // BarChart,
-    // CartesianGrid,
-    // Label,
-    // LabelList,
-    // Line,
-    // LineChart,
     Pie,
     PieChart,
-    PolarAngleAxis,
-    RadialBar,
-    RadialBarChart,
-
     XAxis,
     YAxis,
-    // Rectangle,
-    // ReferenceLine,
-    // XAxis,
-    // YAxis,
 } from "recharts"
 
 import {
@@ -36,7 +19,6 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
     ChartContainer,
     ChartTooltip,
@@ -59,413 +41,361 @@ import { DesktopDevicesSankey } from "@/components/overview/desktop-devices-sank
 import { MobileSankey } from "@/components/overview/mobile-sankey";
 import { SwgDefenseLayers, hasSwgData } from "@/components/overview/swg-defense-layers";
 import { Separator } from "@/components/ui/separator";
-import { formatNumber, metricDescriptions } from "@/lib/format-utils";
+import { formatNumber } from "@/lib/format-utils";
 
 export default function Dashboard() {
-
+    // Helper function to calculate percentage with proper number coercion
+    const calculatePercentage = (passed: any, total: any): string => {
+        const passedNum = Number(passed) || 0;
+        const totalNum = Number(total) || 0;
+        if (totalNum === 0) return '0%';
+        return `${(passedNum / totalNum) * 100}%`;
+    };
 
     return (
         <TooltipProvider delayDuration={200}>
-            {/* Tenant overview Section */}
-            <div className="w-full flex max-w-7xl flex-col gap-6 mt-12">
-                <div className="grid w-full gap-6 lg:grid-cols-3">
-                    {/* Column 1: Tenant Information */}
-                    <Card>
-                        <CardHeader className="pb-3">
-                            <CardTitle className="flex items-center gap-2">
-                                <Building2 className="size-5" />
-                                Tenant
+            <div className="w-full flex flex-col gap-6 mt-8">
+                {/* Tenant Info - Single Line Horizontal */}
+                <Card>
+                    <CardHeader className="flex flex-row space-y-0 pb-2 pl-6 pr-12 pt-4 items-center gap-8">
+                        <div className="flex items-center gap-2 shrink-0">
+                            <Building2 className="size-5 shrink-0" />
+                            <CardTitle className="text-lg">Tenant info</CardTitle>
+                        </div>
+                        <div className="flex items-center gap-6 flex-1 min-w-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-sm text-muted-foreground shrink-0">Name</span>
+                                <span className="font-medium truncate">{reportData.TenantName || 'Not Available'}</span>
+                            </div>
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-sm text-muted-foreground shrink-0">Tenant ID</span>
+                                <span className="font-mono text-xs truncate">{reportData.TenantId || 'Not Available'}</span>
+                            </div>
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-sm text-muted-foreground shrink-0">Primary Domain</span>
+                                <span className="font-medium truncate">{reportData.Domain || 'Not Available'}</span>
+                            </div>
+                        </div>
+                    </CardHeader>
+                </Card>
+
+                {/* Metrics Grid - Full Width - 4 Columns */}
+                <div className="grid grid-cols-4 gap-4">
+                    {/* Users Card */}
+                    <Card className="flex h-full flex-col">
+                        <CardHeader className="pb-2 pt-4 px-4">
+                            <CardTitle className="text-base font-semibold flex items-center gap-2">
+                                <User className="size-5" />
+                                Users
                             </CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                <div className="flex flex-col gap-1">
-                                    <span className="text-sm text-muted-foreground">Name</span>
-                                    <span className="font-medium">
-                                        {reportData.TenantName || 'Not Available'}
-                                    </span>
-                                </div>
-                                {<div className="flex flex-col gap-1">
-                                    <span className="text-sm text-muted-foreground">Tenant ID</span>
-                                    <span className="font-mono text-xs">
-                                        {reportData.TenantId || 'Not Available'}
-                                    </span>
-                                </div>}
-                                <div className="flex flex-col gap-1">
-                                    <span className="text-sm text-muted-foreground">Primary Domain</span>
-                                    <span className="font-medium">
-                                        {reportData.Domain || 'Not Available'}
-                                    </span>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Column 2: Tenant Metrics */}
-
-                    <div className="grid gap-4 grid-cols-2 grid-rows-3">
-                        {/* Users Metric */}
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-3 rounded-md border px-4 py-3">
-                                    <Avatar className="size-8.5 rounded-sm">
-                                        <AvatarFallback className="text-blue-600 shrink-0 rounded-sm">
-                                            <User className="size-8" />
-                                        </AvatarFallback>
-                                    </Avatar>
+                        <CardContent className="flex-1 flex items-center pt-0 pb-4 px-4">
+                            <div className="grid w-full gap-4 grid-cols-2">
+                                <div className="flex items-center gap-3">
                                     <div className="flex flex-col gap-0.5">
-                                        <span className="text-muted-foreground text-sm font-medium">Users</span>
+                                        <span className="text-muted-foreground text-sm font-medium flex items-center gap-1">
+                                            Total users
+                                        </span>
                                         <span className="text-lg font-medium">
                                             {formatNumber(reportData.TenantInfo?.TenantOverview?.UserCount)}
                                         </span>
                                     </div>
                                 </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <div className="space-y-1">
-                                    <p className="font-semibold">{reportData.TenantInfo?.TenantOverview?.UserCount?.toLocaleString() || '0'} Users</p>
-                                    <p className="text-xs text-muted-foreground">{metricDescriptions.users}</p>
-                                </div>
-                            </TooltipContent>
-                        </Tooltip>
-
-                        {/* Guests Metric */}
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-3 rounded-md border px-4 py-3">
-                                    <Avatar className="size-8.5 rounded-sm">
-                                        <AvatarFallback className="text-indigo-600 shrink-0 rounded-sm">
-                                            <Luggage className="size-8" />
-                                        </AvatarFallback>
-                                    </Avatar>
+                                <div className="flex items-center gap-3">
                                     <div className="flex flex-col gap-0.5">
-                                        <span className="text-muted-foreground text-sm font-medium">Guests</span>
+                                        <span className="text-muted-foreground text-sm font-medium flex items-center gap-1">
+                                            Guest users
+                                        </span>
                                         <span className="text-lg font-medium">
                                             {formatNumber(reportData.TenantInfo?.TenantOverview?.GuestCount)}
                                         </span>
                                     </div>
                                 </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <div className="space-y-1">
-                                    <p className="font-semibold">{reportData.TenantInfo?.TenantOverview?.GuestCount?.toLocaleString() || '0'} Guests</p>
-                                    <p className="text-xs text-muted-foreground">{metricDescriptions.guests}</p>
-                                </div>
-                            </TooltipContent>
-                        </Tooltip>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                        {/* Groups Metric */}
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-3 rounded-md border px-4 py-3">
-                                    <Avatar className="size-8.5 rounded-sm">
-                                        <AvatarFallback className="text-purple-600 shrink-0 rounded-sm">
-                                            <Users className="size-8" />
-                                        </AvatarFallback>
-                                    </Avatar>
+                    {/* Devices Card */}
+                    <Card className="flex h-full flex-col">
+                        <CardHeader className="pb-2 pt-4 px-4">
+                            <CardTitle className="text-base font-semibold flex items-center gap-2">
+                                <MonitorSmartphone className="size-5" />
+                                Devices
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex-1 flex items-center pt-0 pb-4 px-4">
+                            <div className="grid w-full gap-4 grid-cols-2">
+                                <div className="flex items-center gap-3">
                                     <div className="flex flex-col gap-0.5">
-                                        <span className="text-muted-foreground text-sm font-medium">Groups</span>
-                                        <span className="text-lg font-medium">
-                                            {formatNumber(reportData.TenantInfo?.TenantOverview?.GroupCount)}
+                                        <span className="text-muted-foreground text-sm font-medium">
+                                            Total devices
                                         </span>
-                                    </div>
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <div className="space-y-1">
-                                    <p className="font-semibold">{reportData.TenantInfo?.TenantOverview?.GroupCount?.toLocaleString() || '0'} Groups</p>
-                                    <p className="text-xs text-muted-foreground">{metricDescriptions.groups}</p>
-                                </div>
-                            </TooltipContent>
-                        </Tooltip>
-
-                        {/* Applications Metric */}
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-3 rounded-md border px-4 py-3">
-                                    <Avatar className="size-8.5 rounded-sm">
-                                        <AvatarFallback className="text-rose-600 shrink-0 rounded-sm">
-                                            <Layers3 className="size-8" />
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col gap-0.5">
-                                        <span className="text-muted-foreground text-sm font-medium">Apps</span>
-                                        <span className="text-lg font-medium">
-                                            {formatNumber(reportData.TenantInfo?.TenantOverview?.ApplicationCount)}
-                                        </span>
-                                    </div>
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <div className="space-y-1">
-                                    <p className="font-semibold">{reportData.TenantInfo?.TenantOverview?.ApplicationCount?.toLocaleString() || '0'} Applications</p>
-                                    <p className="text-xs text-muted-foreground">{metricDescriptions.apps}</p>
-                                </div>
-                            </TooltipContent>
-                        </Tooltip>
-
-                        {/* Devices Metric */}
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-3 rounded-md border px-4 py-3">
-                                    <Avatar className="size-8.5 rounded-sm">
-                                        <AvatarFallback className="text-orange-600 shrink-0 rounded-sm">
-                                            <MonitorSmartphone className="size-8" />
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col gap-0.5">
-                                        <span className="text-muted-foreground text-sm font-medium">Devices</span>
                                         <span className="text-lg font-medium">
                                             {formatNumber(reportData.TenantInfo?.TenantOverview?.DeviceCount)}
                                         </span>
                                     </div>
                                 </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <div className="space-y-1">
-                                    <p className="font-semibold">{reportData.TenantInfo?.TenantOverview?.DeviceCount?.toLocaleString() || '0'} Devices</p>
-                                    <p className="text-xs text-muted-foreground">{metricDescriptions.devices}</p>
-                                </div>
-                            </TooltipContent>
-                        </Tooltip>
-
-                        {/* Managed Devices Metric */}
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-3 rounded-md border px-4 py-3">
-                                    <Avatar className="size-8.5 rounded-sm">
-                                        <AvatarFallback className="text-emerald-600 shrink-0 rounded-sm">
-                                            <MonitorSmartphone className="size-8" />
-                                        </AvatarFallback>
-                                    </Avatar>
+                                <div className="flex items-center gap-3">
                                     <div className="flex flex-col gap-0.5">
-                                        <span className="text-muted-foreground text-sm font-medium">Managed</span>
+                                        <span className="text-muted-foreground text-sm font-medium">
+                                            Managed
+                                        </span>
                                         <span className="text-lg font-medium">
                                             {formatNumber(reportData.TenantInfo?.TenantOverview?.ManagedDeviceCount)}
                                         </span>
                                     </div>
                                 </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <div className="space-y-1">
-                                    <p className="font-semibold">{reportData.TenantInfo?.TenantOverview?.ManagedDeviceCount?.toLocaleString() || '0'} Managed Devices</p>
-                                    <p className="text-xs text-muted-foreground">{metricDescriptions.managed}</p>
-                                </div>
-                            </TooltipContent>
-                        </Tooltip>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                        {/* Assessment Date Metric */}
-                        {/* <div className="flex items-center gap-3 rounded-md border px-4 py-3">
-                                    <Avatar className="size-8.5 rounded-sm">
-                                        <AvatarFallback className="bg-primary/10 text-primary shrink-0 rounded-sm">
-                                            <Globe className="size-5" />
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col gap-0.5">
-                                        <span className="text-muted-foreground text-sm font-medium">Last Scan</span>
-                                        <span className="text-sm font-medium">
-                                            {reportData.ExecutedAt ? new Date(reportData.ExecutedAt).toLocaleDateString() : 'Not Available'}
-                                        </span>
-                                    </div>
-                                </div> */}
-                    </div>
-
-
-                    {/* Column 3: Assessment Results */}
-                    <Card /** Test summary chart   */
-                        x-chunk="charts-01-chunk-5"
-                    >
-                        <CardHeader className="pb-3">
-                            <CardTitle className="flex items-center gap-2">
-                                <ShieldCheck className="size-5" />
-                                Assessment
+                    {/* Groups & Apps Card */}
+                    <Card className="flex h-full flex-col">
+                        <CardHeader className="pb-2 pt-4 px-4">
+                            <CardTitle className="text-base font-semibold flex items-center gap-2">
+                                <Users className="size-5" />
+                                Groups &amp; apps
                             </CardTitle>
                         </CardHeader>
-                        <CardContent className="flex gap-6">
-                            <div className="flex flex-col gap-2">
-                                <div className="grid auto-rows-min gap-0.5">
-                                    <div className="text-sm text-muted-foreground">Identity</div>
-                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
-                                        {reportData.TestResultSummary.IdentityPassed}/{reportData.TestResultSummary.IdentityTotal}
-                                        <span className="text-sm font-normal text-muted-foreground">
-                                            tests
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="grid auto-rows-min gap-0.5">
-                                    <div className="text-sm text-muted-foreground">Devices</div>
-                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
-                                        {reportData.TestResultSummary.DevicesPassed}/{reportData.TestResultSummary.DevicesTotal}
-                                        <span className="text-sm font-normal text-muted-foreground">
-                                            tests
-                                        </span>
-                                    </div>
-                                </div>
-                                {reportData.TestResultSummary.DataPassed !== undefined && (
-                                <div className="grid flex-1 auto-rows-min gap-0.5">
-                                    <div className="text-sm text-muted-foreground">Data</div>
-                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
-                                        {reportData.TestResultSummary.DataPassed}/{reportData.TestResultSummary.DataTotal}
-                                        <span className="text-sm font-normal text-muted-foreground">
-                                            tests
-                                        </span>
-                                    </div>
-                                </div>
-                                )}
-                                {reportData.TestResultSummary.NetworkPassed !== undefined && (
-                                <div className="grid flex-1 auto-rows-min gap-0.5">
-                                    <div className="text-sm text-muted-foreground">Network</div>
-                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
-                                        {reportData.TestResultSummary.NetworkPassed}/{reportData.TestResultSummary.NetworkTotal}
-                                        <span className="text-sm font-normal text-muted-foreground">
-                                            tests
-                                        </span>
-                                    </div>
-                                </div>
-                                )}
-                                {reportData.TestResultSummary.InfrastructurePassed !== undefined && (
-                                <div className="grid flex-1 auto-rows-min gap-0.5">
-                                    <div className="text-sm text-muted-foreground">Infrastructure</div>
-                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
-                                        {reportData.TestResultSummary.InfrastructurePassed}/{reportData.TestResultSummary.InfrastructureTotal}
-                                        <span className="text-sm font-normal text-muted-foreground">
-                                            tests
-                                        </span>
-                                    </div>
-                                </div>
-                                )}
-                                {reportData.TestResultSummary.SecOpsPassed !== undefined && (
-                                <div className="grid flex-1 auto-rows-min gap-0.5">
-                                    <div className="text-sm text-muted-foreground">SecOps</div>
-                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
-                                        {reportData.TestResultSummary.SecOpsPassed}/{reportData.TestResultSummary.SecOpsTotal}
-                                        <span className="text-sm font-normal text-muted-foreground">
-                                            tests
-                                        </span>
-                                    </div>
-                                </div>
-                                )}
-                                {reportData.TestResultSummary.AIPassed !== undefined && (
-                                <div className="grid flex-1 auto-rows-min gap-0.5">
-                                    <div className="text-sm text-muted-foreground">AI</div>
-                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
-                                        {reportData.TestResultSummary.AIPassed}/{reportData.TestResultSummary.AITotal}
-                                        <span className="text-sm font-normal text-muted-foreground">
-                                            tests
-                                        </span>
-                                    </div>
-                                </div>
-                                )}
+                        <CardContent className="flex-1 flex items-center pt-0 pb-4 px-4">
+                            <div className="grid w-full gap-4 grid-cols-2">
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <div className="cursor-pointer">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-muted-foreground text-sm font-medium flex items-center gap-1">
+                                                        Groups
+                                                        <Info className="size-3.5 shrink-0 opacity-70" />
+                                                    </span>
+                                                    <span className="text-lg font-medium">
+                                                        {formatNumber(reportData.TenantInfo?.TenantOverview?.GroupCount)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p className="text-xs">Microsoft Entra ID groups</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <div className="cursor-pointer">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-muted-foreground text-sm font-medium flex items-center gap-1">
+                                                        Apps
+                                                        <Info className="size-3.5 shrink-0 opacity-70" />
+                                                    </span>
+                                                    <span className="text-lg font-medium">
+                                                        {formatNumber(reportData.TenantInfo?.TenantOverview?.ApplicationCount)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p className="text-xs">Enterprise applications</p>
+                                    </TooltipContent>
+                                </Tooltip>
                             </div>
-                            <ChartContainer
-                                config={{
-                                    move: {
-                                        label: "Identity",
-                                        color: "hsl(var(--chart-1))",
-                                    },
-                                    exercise: {
-                                        label: "Devices",
-                                        color: "hsl(var(--chart-2))",
-                                    },
-                                    stand: {
-                                        label: "Data",
-                                        color: "hsl(var(--chart-3))",
-                                    },
-                                    network: {
-                                        label: "Network",
-                                        color: "hsl(var(--chart-4))",
-                                    },
-                                    infrastructure: {
-                                        label: "Infrastructure",
-                                        color: "hsl(var(--chart-5))",
-                                    },
-                                    secops: {
-                                        label: "SecOps",
-                                        color: "hsl(var(--chart-1))",
-                                    },
-                                    ai: {
-                                        label: "AI",
-                                        color: "hsl(var(--chart-2))",
-                                    },
-                                }}
-                                className="mx-auto aspect-square w-full max-w-[80%]"
-                            >
-                                <RadialBarChart
-                                    margin={{
-                                        left: -10,
-                                        right: -10,
-                                        top: -10,
-                                        bottom: -10,
-                                    }}
-                                    data={[
-                                        // Only include AI pillar if it exists (preview mode)
-                                        ...(reportData.TestResultSummary.AIPassed !== undefined && reportData.TestResultSummary.AITotal !== undefined
-                                            ? [{
-                                                activity: "ai",
-                                                value: (reportData.TestResultSummary.AIPassed / reportData.TestResultSummary.AITotal) * 100,
-                                                fill: "var(--color-ai)",
-                                            }]
-                                            : []),
-                                        // Only include SecOps pillar if it exists (preview mode)
-                                        ...(reportData.TestResultSummary.SecOpsPassed !== undefined && reportData.TestResultSummary.SecOpsTotal !== undefined
-                                            ? [{
-                                                activity: "secops",
-                                                value: (reportData.TestResultSummary.SecOpsPassed / reportData.TestResultSummary.SecOpsTotal) * 100,
-                                                fill: "var(--color-secops)",
-                                            }]
-                                            : []),
-                                        // Only include Infrastructure pillar if it exists (preview mode)
-                                        ...(reportData.TestResultSummary.InfrastructurePassed !== undefined && reportData.TestResultSummary.InfrastructureTotal !== undefined
-                                            ? [{
-                                                activity: "infrastructure",
-                                                value: (reportData.TestResultSummary.InfrastructurePassed / reportData.TestResultSummary.InfrastructureTotal) * 100,
-                                                fill: "var(--color-infrastructure)",
-                                            }]
-                                            : []),
-                                        // Only include Network pillar if it exists (preview mode)
-                                        ...(reportData.TestResultSummary.NetworkPassed !== undefined && reportData.TestResultSummary.NetworkTotal !== undefined
-                                            ? [{
-                                                activity: "network",
-                                                value: (reportData.TestResultSummary.NetworkPassed / reportData.TestResultSummary.NetworkTotal) * 100,
-                                                fill: "var(--color-network)",
-                                            }]
-                                            : []),
-                                        // Only include Data pillar if it exists (preview mode)
-                                        ...(reportData.TestResultSummary.DataPassed !== undefined && reportData.TestResultSummary.DataTotal !== undefined
-                                            ? [{
-                                                activity: "data",
-                                                value: (reportData.TestResultSummary.DataPassed / reportData.TestResultSummary.DataTotal) * 100,
-                                                fill: "var(--color-stand)",
-                                            }]
-                                            : []),
-                                        {
-                                            activity: "devices",
-                                            value: (reportData.TestResultSummary.DevicesPassed / reportData.TestResultSummary.DevicesTotal) * 100,
-                                            fill: "var(--color-exercise)",
-                                        },
-                                        {
-                                            activity: "identity",
-                                            value: (reportData.TestResultSummary.IdentityPassed / reportData.TestResultSummary.IdentityTotal) * 100,
-                                            fill: "var(--color-move)",
-                                        },
-                                    ]}
-                                    innerRadius="20%"
-                                    barSize={24}
-                                    startAngle={90}
-                                    endAngle={450}
-                                >
-                                    <PolarAngleAxis
-                                        type="number"
-                                        domain={[0, 100]}
-                                        dataKey="value"
-                                        tick={false}
-                                    />
-                                    <RadialBar dataKey="value" background cornerRadius={5} />
-                                </RadialBarChart>
-                            </ChartContainer>
+                        </CardContent>
+                    </Card>
+
+                    {/* Agents Card */}
+                    <Card className="flex h-full flex-col">
+                        <CardHeader className="pb-2 pt-4 px-4">
+                            <CardTitle className="text-base font-semibold flex items-center gap-2">
+                                <Bot className="size-5" />
+                                Agents
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex-1 flex items-center pt-0 pb-4 px-4">
+                            <div className="grid w-full gap-4 grid-cols-2">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex flex-col gap-0.5">
+                                        <span className="text-muted-foreground text-sm font-medium">
+                                            Total agents
+                                        </span>
+                                        <span className="text-lg font-medium">
+                                            —
+                                        </span>
+                                    </div>
+                                </div>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <div className="cursor-pointer">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-muted-foreground text-sm font-medium flex items-center gap-1">
+                                                        Active users
+                                                        <Info className="size-3.5 shrink-0 opacity-70" />
+                                                    </span>
+                                                    <span className="text-lg font-medium">
+                                                        —
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p className="text-xs">Active agent users</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* Assessment Results - Full Width */}
+                <Card x-chunk="charts-01-chunk-5">
+                    <CardHeader className="pb-2 pt-6 px-4">
+                        <CardTitle className="text-2xl font-semibold flex items-center gap-2">
+                            <ShieldCheck className="size-5" />
+                            Assessment
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0 pl-11 pr-4 pb-6">
+                        <div className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+                            {/* Identity */}
+                            <div className="flex flex-col gap-1.5">
+                                <div className="text-sm text-muted-foreground">Identity</div>
+                                <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
+                                    {reportData.TestResultSummary.IdentityPassed}/{reportData.TestResultSummary.IdentityTotal}
+                                    <span className="text-sm font-normal text-muted-foreground">tests</span>
+                                </div>
+                                <div className="h-1 w-full max-w-[120px] overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className="h-full rounded-full"
+                                        style={{
+                                            width: calculatePercentage(reportData.TestResultSummary.IdentityPassed, reportData.TestResultSummary.IdentityTotal),
+                                            backgroundColor: 'rgb(15, 108, 189)',
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Devices */}
+                            <div className="flex flex-col gap-1.5">
+                                <div className="text-sm text-muted-foreground">Devices</div>
+                                <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
+                                    {reportData.TestResultSummary.DevicesPassed}/{reportData.TestResultSummary.DevicesTotal}
+                                    <span className="text-sm font-normal text-muted-foreground">tests</span>
+                                </div>
+                                <div className="h-1 w-full max-w-[120px] overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className="h-full rounded-full"
+                                        style={{
+                                            width: calculatePercentage(reportData.TestResultSummary.DevicesPassed, reportData.TestResultSummary.DevicesTotal),
+                                            backgroundColor: 'rgb(15, 108, 189)',
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Data */}
+                            {reportData.TestResultSummary.DataPassed !== undefined && (
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="text-sm text-muted-foreground">Data</div>
+                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
+                                        {reportData.TestResultSummary.DataPassed}/{reportData.TestResultSummary.DataTotal}
+                                        <span className="text-sm font-normal text-muted-foreground">tests</span>
+                                    </div>
+                                    <div className="h-1 w-full max-w-[120px] overflow-hidden rounded-full bg-muted">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{
+                                                width: calculatePercentage(reportData.TestResultSummary.DataPassed, reportData.TestResultSummary.DataTotal),
+                                                backgroundColor: 'rgb(15, 108, 189)',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Network */}
+                            {reportData.TestResultSummary.NetworkPassed !== undefined && (
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="text-sm text-muted-foreground">Network</div>
+                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
+                                        {reportData.TestResultSummary.NetworkPassed}/{reportData.TestResultSummary.NetworkTotal}
+                                        <span className="text-sm font-normal text-muted-foreground">tests</span>
+                                    </div>
+                                    <div className="h-1 w-full max-w-[120px] overflow-hidden rounded-full bg-muted">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{
+                                                width: calculatePercentage(reportData.TestResultSummary.NetworkPassed, reportData.TestResultSummary.NetworkTotal),
+                                                backgroundColor: 'rgb(15, 108, 189)',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Infrastructure */}
+                            {reportData.TestResultSummary.InfrastructurePassed !== undefined && (
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="text-sm text-muted-foreground">Infrastructure</div>
+                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
+                                        {reportData.TestResultSummary.InfrastructurePassed}/{reportData.TestResultSummary.InfrastructureTotal}
+                                        <span className="text-sm font-normal text-muted-foreground">tests</span>
+                                    </div>
+                                    <div className="h-1 w-full max-w-[120px] overflow-hidden rounded-full bg-muted">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{
+                                                width: calculatePercentage(reportData.TestResultSummary.InfrastructurePassed, reportData.TestResultSummary.InfrastructureTotal),
+                                                backgroundColor: 'rgb(15, 108, 189)',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SecOps */}
+                            {reportData.TestResultSummary.SecOpsPassed !== undefined && (
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="text-sm text-muted-foreground">SecOps</div>
+                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
+                                        {reportData.TestResultSummary.SecOpsPassed}/{reportData.TestResultSummary.SecOpsTotal}
+                                        <span className="text-sm font-normal text-muted-foreground">tests</span>
+                                    </div>
+                                    <div className="h-1 w-full max-w-[120px] overflow-hidden rounded-full bg-muted">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{
+                                                width: calculatePercentage(reportData.TestResultSummary.SecOpsPassed, reportData.TestResultSummary.SecOpsTotal),
+                                                backgroundColor: 'rgb(15, 108, 189)',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* AI */}
+                            {reportData.TestResultSummary.AIPassed !== undefined && (
+                                <div className="flex flex-col gap-1.5">
+                                    <div className="text-sm text-muted-foreground">AI</div>
+                                    <div className="flex items-baseline gap-1 text-xl font-bold tabular-nums leading-none">
+                                        {reportData.TestResultSummary.AIPassed}/{reportData.TestResultSummary.AITotal}
+                                        <span className="text-sm font-normal text-muted-foreground">tests</span>
+                                    </div>
+                                    <div className="h-1 w-full max-w-[120px] overflow-hidden rounded-full bg-muted">
+                                        <div
+                                            className="h-full rounded-full"
+                                            style={{
+                                                width: calculatePercentage(reportData.TestResultSummary.AIPassed, reportData.TestResultSummary.AITotal),
+                                                backgroundColor: 'rgb(15, 108, 189)',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             {/* Identity summary */}
