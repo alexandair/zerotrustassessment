@@ -131,11 +131,8 @@ function Test-Assessment-41211 {
     $workspaceResults = foreach ($workspace in $onboardedWorkspaces) {
         $diagSettings = $diagSettingsByWorkspace[$workspace.WorkspaceId]
 
-        $totalSettingCount       = $null
-        $settingNames            = @()
-        $enabledCategories       = @()
-        $destinationWorkspaceIds = @()
-        $rowStatus               = 'Fail'
+        $settingDetails = @()
+        $rowStatus      = 'Fail'
 
         if ($null -eq $diagSettings) {
             # Diagnostic settings API call failed — cannot determine setting state for this workspace.
@@ -143,12 +140,24 @@ function Test-Assessment-41211 {
         }
         elseif ($diagSettings.Count -eq 0) {
             # Q1 returned an empty collection — no diagnostic settings configured (spec: Fail).
-            $totalSettingCount = 0
             $rowStatus = 'Fail'
         }
         else {
-            $totalSettingCount = $diagSettings.Count
-            $settingNames      = @($diagSettings | ForEach-Object { $_.name })
+            # Build per-setting detail for display, preserving the category-to-destination
+            # association for each diagnostic setting. Include categoryGroup (e.g. allLogs, audit)
+            # as fallback for logs[].category — both are valid shapes for a log entry; a given
+            # entry uses one or the other, never both simultaneously.
+            $settingDetails = @(foreach ($setting in $diagSettings) {
+                $enabledLogs = @($setting.properties.logs | Where-Object { $_.enabled -eq $true })
+                $settingCats = @($enabledLogs | ForEach-Object {
+                    if ($_.category) { $_.category } else { $_.categoryGroup }
+                } | Where-Object { $_ })
+                [PSCustomObject]@{
+                    Name              = $setting.name
+                    EnabledCategories = $settingCats
+                    DestinationId     = $setting.properties.workspaceId
+                }
+            })
 
             # A qualifying setting has at least one logs[] entry with enabled == true
             # AND routes to a Log Analytics workspace (properties.workspaceId non-empty).
@@ -162,29 +171,6 @@ function Test-Assessment-41211 {
                 ($_.properties.logs | Where-Object { $_.enabled -eq $true }).Count -gt 0 -and
                 [string]::IsNullOrEmpty($_.properties.workspaceId)
             })
-
-            # Collect enabled log categories from all settings that have at least one enabled log.
-            # Include categoryGroup (e.g. allLogs, audit) as fallback — Azure diagnostic settings support
-            # both logs[].category (named category) and logs[].categoryGroup; a given entry uses one
-            # or the other, never both simultaneously.
-            $enabledCategories = @(
-                ($qualifyingSettings + $enabledLogsNoLaw) |
-                ForEach-Object { $_.properties.logs | Where-Object { $_.enabled -eq $true } } |
-                ForEach-Object { if ($_.category) { $_.category } else { $_.categoryGroup } } |
-                Where-Object { $_ } |
-                Sort-Object -Unique
-            )
-
-            # Collect destination workspace IDs from all diagnostic settings that have a workspaceId,
-            # regardless of whether log categories are enabled. This surfaces LAW destinations on
-            # disabled-log settings and matches the spec requirement to report destination information
-            # for all returned diagnostic settings, not only the qualifying ones.
-            $destinationWorkspaceIds = @(
-                $diagSettings |
-                ForEach-Object { $_.properties.workspaceId } |
-                Where-Object { -not [string]::IsNullOrEmpty($_) } |
-                Sort-Object -Unique
-            )
 
             if ($qualifyingSettings.Count -gt 0) {
                 $rowStatus = 'Pass'
@@ -200,16 +186,13 @@ function Test-Assessment-41211 {
         }
 
         [PSCustomObject]@{
-            SubscriptionName         = $workspace.SubscriptionName
-            SubscriptionId           = $workspace.SubscriptionId
-            WorkspaceName            = $workspace.WorkspaceName
-            ResourceGroup            = $workspace.ResourceGroup
-            WorkspaceId              = $workspace.WorkspaceId
-            TotalSettingCount        = $totalSettingCount
-            SettingNames             = $settingNames             # array — Get-SafeMarkdown applied per item in Report Generation
-            EnabledCategories        = $enabledCategories        # array of enabled log category names
-            DestinationWorkspaceIds  = $destinationWorkspaceIds  # array of destination LAW resource IDs
-            RowStatus                = $rowStatus
+            SubscriptionName   = $workspace.SubscriptionName
+            SubscriptionId     = $workspace.SubscriptionId
+            WorkspaceName      = $workspace.WorkspaceName
+            ResourceGroup      = $workspace.ResourceGroup
+            WorkspaceId        = $workspace.WorkspaceId
+            DiagnosticSettings = $settingDetails  # array of per-setting objects; preserves category-to-destination association
+            RowStatus          = $rowStatus
         }
     }
     $workspaceResults = @($workspaceResults)
@@ -246,8 +229,8 @@ function Test-Assessment-41211 {
 
 ## [{0}]({1})
 
-| Subscription | Workspace | Diagnostic settings | Setting names | Enabled categories | Destination workspace | Status |
-| :----------- | :-------- | ------------------: | :------------ | :----------------- | :-------------------- | :----- |
+| Subscription | Workspace | Setting name | Enabled categories | Destination workspace | Status |
+| :----------- | :-------- | :----------- | :----------------- | :-------------------- | :----- |
 {2}
 '@
 
@@ -266,28 +249,35 @@ function Test-Assessment-41211 {
         $diagLink     = "$portalHost/#resource$($result.WorkspaceId)/diagnosticSettings"
         $subMd        = "[$(Get-SafeMarkdown $result.SubscriptionName)]($subLink)"
         $workspaceMd  = "[$(Get-SafeMarkdown $result.WorkspaceName)]($diagLink)"
-        $countMd       = if ($null -eq $result.TotalSettingCount) { '—' } else { $result.TotalSettingCount }
-        $namesMd       = if ($result.SettingNames.Count -gt 0) {
-            ($result.SettingNames | ForEach-Object { Get-SafeMarkdown -Text $_ }) -join ', '
-        } else { '—' }
-        $categoriesMd  = if ($result.EnabledCategories.Count -gt 0) {
-            $result.EnabledCategories -join ', '
-        } else { '—' }
-        $destMd        = if ($result.DestinationWorkspaceIds.Count -gt 0) {
-            ($result.DestinationWorkspaceIds | ForEach-Object {
-                $wsName = ($_ -split '/')[-1]
-                "[$(Get-SafeMarkdown $wsName)]($portalHost/#resource$_/overview)"
-            }) -join ', '
-        } elseif ($result.EnabledCategories.Count -gt 0) {
-            # Enabled log categories exist but none route to a Log Analytics workspace
-            '⚠️ Non-LAW destination'
-        } else { '—' }
-        $statusDisplay = switch ($result.RowStatus) {
-            'Pass'        { '✅ Pass' }
-            'Fail'        { '❌ Fail' }
-            'Investigate' { '⚠️ Investigate' }
+
+        if ($result.DiagnosticSettings.Count -gt 0) {
+            # One row per diagnostic setting — preserves the category-to-destination association.
+            foreach ($setting in $result.DiagnosticSettings) {
+                $settingNameMd = Get-SafeMarkdown -Text $setting.Name
+                $categoriesMd  = if ($setting.EnabledCategories.Count -gt 0) {
+                    $setting.EnabledCategories -join ', '
+                } else { '—' }
+                $destMd        = if (-not [string]::IsNullOrEmpty($setting.DestinationId)) {
+                    $wsName = ($setting.DestinationId -split '/')[-1]
+                    "[$(Get-SafeMarkdown $wsName)]($portalHost/#resource$($setting.DestinationId)/overview)"
+                } elseif ($setting.EnabledCategories.Count -gt 0) {
+                    # Logs enabled but destination is not a Log Analytics workspace.
+                    '⚠️ Non-LAW destination'
+                } else { '—' }
+                $settingStatus = if ($setting.EnabledCategories.Count -gt 0 -and -not [string]::IsNullOrEmpty($setting.DestinationId)) {
+                    '✅ Active'
+                } elseif ($setting.EnabledCategories.Count -gt 0) {
+                    '⚠️ Non-LAW'
+                } else {
+                    '❌ Logs disabled'
+                }
+                $tableRows += "| $subMd | $workspaceMd | $settingNameMd | $categoriesMd | $destMd | $settingStatus |`n"
+            }
+        } else {
+            # No diagnostic settings (Fail) or API error (Investigate) — single placeholder row.
+            $placeholderStatus = if ($result.RowStatus -eq 'Investigate') { '⚠️ Investigate' } else { '❌ No settings' }
+            $tableRows += "| $subMd | $workspaceMd | — | — | — | $placeholderStatus |`n"
         }
-        $tableRows    += "| $subMd | $workspaceMd | $countMd | $namesMd | $categoriesMd | $destMd | $statusDisplay |`n"
     }
 
     if ($hasMoreItems) {
