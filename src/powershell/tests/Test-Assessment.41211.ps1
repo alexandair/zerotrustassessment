@@ -164,17 +164,23 @@ function Test-Assessment-41211 {
             })
 
             # Collect enabled log categories from all settings that have at least one enabled log.
+            # Include categoryGroup (e.g. allLogs, audit) as fallback — Azure diagnostic settings support
+            # both logs[].category (named category) and logs[].categoryGroup; a given entry uses one
+            # or the other, never both simultaneously.
             $enabledCategories = @(
                 ($qualifyingSettings + $enabledLogsNoLaw) |
                 ForEach-Object { $_.properties.logs | Where-Object { $_.enabled -eq $true } } |
-                ForEach-Object { $_.category } |
+                ForEach-Object { if ($_.category) { $_.category } else { $_.categoryGroup } } |
                 Where-Object { $_ } |
                 Sort-Object -Unique
             )
 
-            # Collect destination workspace IDs from qualifying settings (those with a LAW destination).
+            # Collect destination workspace IDs from all diagnostic settings that have a workspaceId,
+            # regardless of whether log categories are enabled. This surfaces LAW destinations on
+            # disabled-log settings and matches the spec requirement to report destination information
+            # for all returned diagnostic settings, not only the qualifying ones.
             $destinationWorkspaceIds = @(
-                $qualifyingSettings |
+                $diagSettings |
                 ForEach-Object { $_.properties.workspaceId } |
                 Where-Object { -not [string]::IsNullOrEmpty($_) } |
                 Sort-Object -Unique
