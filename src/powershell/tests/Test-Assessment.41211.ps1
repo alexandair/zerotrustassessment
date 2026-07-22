@@ -131,8 +131,9 @@ function Test-Assessment-41211 {
     $workspaceResults = foreach ($workspace in $onboardedWorkspaces) {
         $diagSettings = $diagSettingsByWorkspace[$workspace.WorkspaceId]
 
-        $settingDetails = @()
-        $rowStatus      = 'Fail'
+        $totalSettingCount = $null
+        $settingDetails    = @()
+        $rowStatus         = 'Fail'
 
         if ($null -eq $diagSettings) {
             # Diagnostic settings API call failed — cannot determine setting state for this workspace.
@@ -140,9 +141,12 @@ function Test-Assessment-41211 {
         }
         elseif ($diagSettings.Count -eq 0) {
             # Q1 returned an empty collection — no diagnostic settings configured (spec: Fail).
+            $totalSettingCount = 0
             $rowStatus = 'Fail'
         }
         else {
+            $totalSettingCount = $diagSettings.Count
+
             # Build per-setting detail for display, preserving the category-to-destination
             # association for each diagnostic setting. Include categoryGroup (e.g. allLogs, audit)
             # as fallback for logs[].category — both are valid shapes for a log entry; a given
@@ -191,6 +195,7 @@ function Test-Assessment-41211 {
             WorkspaceName      = $workspace.WorkspaceName
             ResourceGroup      = $workspace.ResourceGroup
             WorkspaceId        = $workspace.WorkspaceId
+            TotalSettingCount  = $totalSettingCount
             DiagnosticSettings = $settingDetails  # array of per-setting objects; preserves category-to-destination association
             RowStatus          = $rowStatus
         }
@@ -229,8 +234,8 @@ function Test-Assessment-41211 {
 
 ## [{0}]({1})
 
-| Subscription | Workspace | Setting name | Enabled categories | Destination workspace | Status |
-| :----------- | :-------- | :----------- | :----------------- | :-------------------- | :----- |
+| Subscription | Workspace | Diagnostic settings | Setting name | Enabled categories | Destination workspace | Status |
+| :----------- | :-------- | ------------------: | :----------- | :----------------- | :-------------------- | :----- |
 {2}
 '@
 
@@ -249,6 +254,7 @@ function Test-Assessment-41211 {
         $diagLink     = "$portalHost/#resource$($result.WorkspaceId)/diagnosticSettings"
         $subMd        = "[$(Get-SafeMarkdown $result.SubscriptionName)]($subLink)"
         $workspaceMd  = "[$(Get-SafeMarkdown $result.WorkspaceName)]($diagLink)"
+        $countMd      = if ($null -eq $result.TotalSettingCount) { '—' } else { $result.TotalSettingCount }
 
         if ($result.DiagnosticSettings.Count -gt 0) {
             # One row per diagnostic setting — preserves the category-to-destination association.
@@ -271,12 +277,12 @@ function Test-Assessment-41211 {
                 } else {
                     '❌ Logs disabled'
                 }
-                $tableRows += "| $subMd | $workspaceMd | $settingNameMd | $categoriesMd | $destMd | $settingStatus |`n"
+                $tableRows += "| $subMd | $workspaceMd | $countMd | $settingNameMd | $categoriesMd | $destMd | $settingStatus |`n"
             }
         } else {
             # No diagnostic settings (Fail) or API error (Investigate) — single placeholder row.
             $placeholderStatus = if ($result.RowStatus -eq 'Investigate') { '⚠️ Investigate' } else { '❌ No settings' }
-            $tableRows += "| $subMd | $workspaceMd | — | — | — | $placeholderStatus |`n"
+            $tableRows += "| $subMd | $workspaceMd | $countMd | — | — | — | $placeholderStatus |`n"
         }
     }
 
@@ -296,7 +302,7 @@ function Test-Assessment-41211 {
         Status = $passed
         Result = $testResultMarkdown
     }
-    if ($customStatus) {
+    if ($null -ne $customStatus) {
         $params.CustomStatus = $customStatus
     }
 
